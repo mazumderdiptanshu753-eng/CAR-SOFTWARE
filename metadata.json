@@ -1,0 +1,6 @@
+{
+  "name": "UGV Autonomous Vision Navigator",
+  "description": "Autonomous UGV GPS Navigation system featuring voice destination commands, obstacle avoidance, collision auto stop, dynamic auto path finder, and real-time speed adjustment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
