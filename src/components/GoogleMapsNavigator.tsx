@@ -49,7 +49,8 @@ import {
   ArrowUpLeft,
   TrafficCone,
   Box,
-  Brain
+  Brain,
+  RotateCw
 } from 'lucide-react';
 import { PRESET_LOCATIONS, PresetLocation } from '../data/presetLocations';
 import {
@@ -72,6 +73,8 @@ import {
 } from '../utils/geoUtils';
 import { Language, Theme, PerceptionData } from '../types';
 import { MachineLearningPanel } from './MachineLearningPanel';
+import { UGVDefensiveSafetyModule } from './UGVDefensiveSafetyModule';
+import { ugvDefensiveAudio } from '../utils/sirenAudio';
 
 interface GoogleMapsNavigatorProps {
   language: Language;
@@ -344,6 +347,21 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showMLModal, setShowMLModal] = useState<boolean>(false);
 
+  // 360° Geofence Perimeter Defense & Anti-Tamper States
+  const [isPerimeterArmed, setIsPerimeterArmed] = useState<boolean>(true);
+  const [isBreached, setIsBreached] = useState<boolean>(false);
+  const [breachDistanceMeters, setBreachDistanceMeters] = useState<number | null>(null);
+  const [isEngineLocked, setIsEngineLocked] = useState<boolean>(false);
+  const [isSirenAudible, setIsSirenAudible] = useState<boolean>(true);
+
+  // Self-Righting Roll-Over Recovery States
+  const [rollAngleDeg, setRollAngleDeg] = useState<number>(0);
+  const [pitchAngleDeg, setPitchAngleDeg] = useState<number>(0);
+  const [isTumbled, setIsTumbled] = useState<boolean>(false);
+  const [isSelfRightingActive, setIsSelfRightingActive] = useState<boolean>(false);
+  const [selfRightingPhase, setSelfRightingPhase] = useState<string>('');
+  const [autoSelfRightEnabled, setAutoSelfRightEnabled] = useState<boolean>(true);
+
   // Refs for Smooth 60 FPS Motion Loop & Autonomous Scheduler
   const recognitionRef = useRef<any>(null);
   const animFrameRef = useRef<number | null>(null);
@@ -360,6 +378,34 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const routeTurnsRef = useRef<RouteTurnManeuver[]>([]);
   const announcedTurnsRef = useRef<Set<string>>(new Set());
   const trafficJamRef = useRef<TrafficJamZone | null>(null);
+
+  // Defensive & Safety Loop Refs
+  const isPerimeterArmedRef = useRef<boolean>(true);
+  const isBreachedRef = useRef<boolean>(false);
+  const isEngineLockedRef = useRef<boolean>(false);
+  const isTumbledRef = useRef<boolean>(false);
+  const isSirenAudibleRef = useRef<boolean>(true);
+
+  // Keep refs synchronized with state
+  useEffect(() => {
+    isPerimeterArmedRef.current = isPerimeterArmed;
+  }, [isPerimeterArmed]);
+
+  useEffect(() => {
+    isBreachedRef.current = isBreached;
+  }, [isBreached]);
+
+  useEffect(() => {
+    isEngineLockedRef.current = isEngineLocked;
+  }, [isEngineLocked]);
+
+  useEffect(() => {
+    isTumbledRef.current = isTumbled;
+  }, [isTumbled]);
+
+  useEffect(() => {
+    isSirenAudibleRef.current = isSirenAudible;
+  }, [isSirenAudible]);
 
   // Keep refs synchronized with state
   useEffect(() => {
@@ -727,6 +773,23 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
 
   // Start Autonomous Driving (AUTO RUN)
   const startDriving = () => {
+    if (isEngineLockedRef.current) {
+      const msg =
+        language === 'bn'
+          ? '⚠️ ইঞ্জিন লক করা রয়েছে! প্রথমে পেরিমিটার অনুপ্রবেশ অ্যালার্ম আনলক করুন।'
+          : '⚠️ Engine is locked! Reset perimeter breach alarm first.';
+      setStatusMessage(msg);
+      return;
+    }
+    if (isTumbledRef.current) {
+      const msg =
+        language === 'bn'
+          ? '⚠️ গাড়ি উল্টে রয়েছে! সোজা করতে রিভার্স মোটর পালস বোতাম চাপুন।'
+          : '⚠️ Rover is inverted! Execute reverse motor pulse self-righting first.';
+      setStatusMessage(msg);
+      return;
+    }
+
     if (autoResumeTimerRef.current) {
       clearTimeout(autoResumeTimerRef.current);
       autoResumeTimerRef.current = null;
@@ -754,6 +817,156 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         ? 'অটো রান সক্রিয়: গাড়ি স্বয়ংক্রিয়ভাবে চলছে। বাধা এলে স্পিড কমাবে অথবা বিকল্প ফাঁকা রাস্তা দিয়ে গন্তব্যে পৌঁছাবে।'
         : 'AUTO RUN Active: Vehicle navigating smoothly. Auto speed reduction & clear road detour active.'
     );
+  };
+
+  // Trigger 360° Perimeter Breach Alarm (ইঞ্জিন লক, হাই-পিচ অ্যালার্ম ও ফ্ল্যাশার চালু)
+  const triggerPerimeterBreach = (distMeters: number) => {
+    setIsBreached(true);
+    isBreachedRef.current = true;
+    setBreachDistanceMeters(distMeters);
+    setIsEngineLocked(true);
+    isEngineLockedRef.current = true;
+    setIsDriving(false);
+    isDrivingRef.current = false;
+    setSpeedKmh(0);
+    speedKmhRef.current = 0;
+    setMotorPwmLeft(0);
+    setMotorPwmRight(0);
+    setSteeringMode('STOP');
+
+    if (isSirenAudibleRef.current) {
+      ugvDefensiveAudio.startDefenseSiren();
+    }
+
+    const msg =
+      language === 'bn'
+        ? `🚨 পেরিমিটার অনুপ্রবেশ! রোভারের ২ মিটারের মধ্যে (${distMeters.toFixed(1)}m) অনুপ্রবেশকারী শনাক্ত — ইঞ্জিন লক ও ফ্ল্যাশার সক্রিয়!`
+        : `🚨 PERIMETER BREACH! Intruder detected within 2m (${distMeters.toFixed(1)}m) — Engine locked & flashers active!`;
+    setStatusMessage(msg);
+    if (voiceVoiceFeedback) {
+      speakPrompt(
+        language === 'bn'
+          ? `সতর্কতা! ২ মিটারের মধ্যে অনুপ্রবেশকারী শনাক্ত। ইঞ্জিন লক এবং অ্যালার্ম চালু করা হয়েছে।`
+          : `Warning! Perimeter breach detected. Engine locked and defensive alarm engaged.`,
+        language
+      );
+    }
+  };
+
+  // Clear Breach & Unlock Engine
+  const handleClearBreach = () => {
+    ugvDefensiveAudio.stopDefenseSiren();
+    setIsBreached(false);
+    isBreachedRef.current = false;
+    setBreachDistanceMeters(null);
+    setIsEngineLocked(false);
+    isEngineLockedRef.current = false;
+    const msg =
+      language === 'bn'
+        ? '🛡️ পেরিমিটার পুনরায় সুরক্ষিত করা হয়েছে। ইঞ্জিন আনলক সম্পন্ন।'
+        : '🛡️ Perimeter secure. Engine unlocked and ready.';
+    setStatusMessage(msg);
+  };
+
+  // Simulate Intruder approaching within 2m
+  const handleSimulateIntruderBreach = () => {
+    triggerPerimeterBreach(1.4);
+  };
+
+  // Simulate Rollover (180° Inversion / উল্টে যাওয়া)
+  const handleSimulateRollover = () => {
+    setRollAngleDeg(180);
+    setIsTumbled(true);
+    isTumbledRef.current = true;
+    setIsDriving(false);
+    isDrivingRef.current = false;
+    setSpeedKmh(0);
+    speedKmhRef.current = 0;
+    setMotorPwmLeft(0);
+    setMotorPwmRight(0);
+    setSteeringMode('STOP');
+
+    const msg =
+      language === 'bn'
+        ? '🚨 TUMBLE ALERT: গাড়ি ১৮০° উল্টে গেছে! রিভার্স মোটর পালস দিয়ে সোজা করার অ্যালগরিদম কার্যকর করুন।'
+        : '🚨 TUMBLE ALERT: Vehicle inverted 180°! Execute reverse motor pulse to self-right.';
+    setStatusMessage(msg);
+    if (voiceVoiceFeedback) {
+      speakPrompt(
+        language === 'bn'
+          ? 'টাম্বল অ্যালার্ট! গাড়িটি উল্টে গেছে। রিভার্স মোটর পালস অ্যালগরিদম প্রস্তুত।'
+          : 'Tumble alert! Vehicle rollover detected. Reverse motor pulse algorithm standing by.',
+        language
+      );
+    }
+
+    if (autoSelfRightEnabled) {
+      setTimeout(() => {
+        handleExecuteSelfRighting();
+      }, 1200);
+    }
+  };
+
+  // Execute Kinetic Self-Righting via Reverse Motor Pulse
+  const handleExecuteSelfRighting = () => {
+    if (isSelfRightingActive) return;
+    setIsSelfRightingActive(true);
+    ugvDefensiveAudio.playKineticRightingPulse();
+
+    setSelfRightingPhase(
+      language === 'bn'
+        ? 'পালস ১: হাই-টর্ক রিভার্স মোটর বিস্ফোরণ (PWM 255)'
+        : 'Pulse 1: High-Torque Reverse Motor Burst (PWM 255)'
+    );
+    setMotorPwmLeft(255);
+    setMotorPwmRight(255);
+    setSteeringMode('STOP');
+
+    setTimeout(() => {
+      setSelfRightingPhase(
+        language === 'bn'
+          ? 'পালস ২: কাউন্টার-মোমেন্টাম কৌণিক টর্ক কিক'
+          : 'Pulse 2: Counter-Momentum Angular Torque Kick'
+      );
+      ugvDefensiveAudio.playKineticRightingPulse();
+      setRollAngleDeg(90);
+    }, 450);
+
+    setTimeout(() => {
+      setSelfRightingPhase(
+        language === 'bn'
+          ? 'পালস ৩: কাইনেটিক ফ্লিপ ও ব্যালান্সিং'
+          : 'Pulse 3: Kinetic Flip & Alignment'
+      );
+      setRollAngleDeg(25);
+    }, 900);
+
+    setTimeout(() => {
+      setRollAngleDeg(0);
+      setIsTumbled(false);
+      isTumbledRef.current = false;
+      setIsSelfRightingActive(false);
+      setSelfRightingPhase(
+        language === 'bn' ? '✓ গাড়ি সফলভাবে সোজা হয়েছে!' : '✓ Vehicle successfully upright!'
+      );
+      setMotorPwmLeft(0);
+      setMotorPwmRight(0);
+      setSteeringMode('STOP');
+
+      const doneMsg =
+        language === 'bn'
+          ? '✅ রিভার্স মোটর পালস সফল! গাড়ি সোজা হয়েছে এবং ড্রাইভের জন্য প্রস্তুত।'
+          : '✅ Self-righting complete! Rover upright and ready to navigate.';
+      setStatusMessage(doneMsg);
+      if (voiceVoiceFeedback) {
+        speakPrompt(
+          language === 'bn'
+            ? 'রিভার্স মোটর পালস সফল হয়েছে। গাড়ি সোজা এবং সুরক্ষিত।'
+            : 'Self-righting algorithm completed. Rover is upright and secure.',
+          language
+        );
+      }
+    }, 1400);
   };
 
   // Stop/Halt Autonomous Driving
@@ -925,7 +1138,18 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     let lastSensorCheckTime = 0;
 
     const smoothStep = (timestamp: number) => {
-      if (!isDrivingRef.current) return;
+      if (!isDrivingRef.current || isEngineLockedRef.current || isTumbledRef.current) {
+        if (isEngineLockedRef.current || isTumbledRef.current) {
+          setIsDriving(false);
+          isDrivingRef.current = false;
+          setSpeedKmh(0);
+          speedKmhRef.current = 0;
+          setMotorPwmLeft(0);
+          setMotorPwmRight(0);
+          setSteeringMode('STOP');
+        }
+        return;
+      }
 
       if (!lastTimestampRef.current) {
         lastTimestampRef.current = timestamp;
@@ -959,6 +1183,17 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
 
           setNearestObstacle(closestObs);
           setNearestDistMeters(closestDist < 100 ? Math.round(closestDist * 10) / 10 : null);
+
+          // 1.5. 360° GEOFENCE PERIMETER DEFENSE (রোভারের ২ মিটারের মধ্যে অসৎ উদ্দেশ্যে এলে অ্যালার্ম ও ইঞ্জিন লক)
+          if (
+            isPerimeterArmedRef.current &&
+            !isBreachedRef.current &&
+            closestObs &&
+            closestDist <= 2.0
+          ) {
+            triggerPerimeterBreach(closestDist);
+            return;
+          }
 
           // 2. PROACTIVE TRAFFIC JAM SCANNER (রাস্তায় জ্যাম থাকলে গাড়ি আগে থেকেই সেই রোড এড়িয়ে বিকল্প রাস্তায় মোড় নেবে)
           if (trafficJamRef.current && trafficJamRef.current.active && !trafficJamRef.current.bypassed) {
@@ -1802,6 +2037,48 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               </button>
             </div>
           </div>
+
+          {/* PANEL 5: 360° Perimeter Defense & Self-Righting Roll-Over Recovery Module */}
+          <UGVDefensiveSafetyModule
+            language={language}
+            theme={theme}
+            isPerimeterArmed={isPerimeterArmed}
+            onTogglePerimeterArm={() => {
+              setIsPerimeterArmed(prev => {
+                const next = !prev;
+                if (!next && isBreached) {
+                  handleClearBreach();
+                }
+                return next;
+              });
+            }}
+            isBreached={isBreached}
+            breachDistanceMeters={breachDistanceMeters}
+            onSimulateIntruderBreach={handleSimulateIntruderBreach}
+            onClearBreach={handleClearBreach}
+            isEngineLocked={isEngineLocked}
+            isSirenAudible={isSirenAudible}
+            onToggleSirenAudible={() => {
+              setIsSirenAudible(prev => {
+                const next = !prev;
+                if (!next) {
+                  ugvDefensiveAudio.stopDefenseSiren();
+                } else if (isBreached) {
+                  ugvDefensiveAudio.startDefenseSiren();
+                }
+                return next;
+              });
+            }}
+            rollAngleDeg={rollAngleDeg}
+            pitchAngleDeg={pitchAngleDeg}
+            isTumbled={isTumbled}
+            isSelfRightingActive={isSelfRightingActive}
+            selfRightingPhase={selfRightingPhase}
+            onSimulateRollover={handleSimulateRollover}
+            onExecuteSelfRighting={handleExecuteSelfRighting}
+            autoSelfRightEnabled={autoSelfRightEnabled}
+            onToggleAutoSelfRight={() => setAutoSelfRightEnabled(prev => !prev)}
+          />
         </div>
 
         {/* RIGHT COLUMN: Interactive Google Map Window with Vibrant Neon Cockpit HUD Controls */}
@@ -1984,14 +2261,38 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               title="UGV Autonomous Rover"
             >
               <div className="relative flex items-center justify-center cursor-pointer transition-transform duration-75 ease-out">
+                {/* 360° 2-Meter Ultrasonic Perimeter Defense Zone */}
+                {isPerimeterArmed && (
+                  <div
+                    className={`absolute -inset-10 rounded-full border-2 border-dashed transition-all pointer-events-none ${
+                      isBreached
+                        ? 'border-rose-500 bg-rose-500/30 animate-ping shadow-[0_0_25px_rgba(244,63,94,0.9)]'
+                        : 'border-rose-400/50 bg-rose-500/5'
+                    }`}
+                  >
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 px-1 rounded bg-black/70 text-[8px] font-mono text-rose-300">
+                      2.0m DEFENSE
+                    </div>
+                  </div>
+                )}
+
+                {/* 360° Perimeter Strobe Flashers when breached */}
+                {isBreached && (
+                  <div className="absolute -inset-14 rounded-full border-4 border-amber-400 bg-amber-400/20 animate-pulse pointer-events-none"></div>
+                )}
+
                 {/* 360 LiDAR Radar Sensor Sweep Ring with Bright Glow */}
                 <div
                   className={`absolute -inset-6 rounded-full border-2 transition-colors ${
-                    autoStopTriggered
-                      ? 'border-rose-400/90 bg-rose-500/25 animate-ping'
-                      : speedGovernorState === 'DECELERATE_OBSTACLE'
-                        ? 'border-amber-400/90 bg-amber-500/25 animate-pulse'
-                        : 'border-cyan-400/60 bg-cyan-500/15 animate-ping'
+                    isBreached
+                      ? 'border-rose-500/95 bg-rose-600/30 animate-ping'
+                      : isTumbled
+                        ? 'border-amber-400/95 bg-amber-500/30 animate-pulse'
+                        : autoStopTriggered
+                          ? 'border-rose-400/90 bg-rose-500/25 animate-ping'
+                          : speedGovernorState === 'DECELERATE_OBSTACLE'
+                            ? 'border-amber-400/90 bg-amber-500/25 animate-pulse'
+                            : 'border-cyan-400/60 bg-cyan-500/15 animate-ping'
                   }`}
                 ></div>
 
@@ -2005,30 +2306,34 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 >
                   <div
                     className={`w-20 h-32 -mt-32 opacity-45 [clip-path:polygon(30%_100%,70%_100%,100%_0%,0%_0%)] filter drop-shadow-[0_0_8px_currentColor] ${
-                      autoStopTriggered
+                      isBreached || autoStopTriggered
                         ? 'bg-rose-500 text-rose-500'
-                        : speedGovernorState === 'DECELERATE_OBSTACLE'
+                        : isTumbled || speedGovernorState === 'DECELERATE_OBSTACLE'
                           ? 'bg-amber-400 text-amber-400'
                           : 'bg-cyan-400 text-cyan-400'
                     }`}
                   ></div>
                 </div>
 
-                {/* Car Rover Body with Dynamic Smooth Heading */}
+                {/* Car Rover Body with Dynamic Smooth Heading and Roll-Over Tilt */}
                 <div
                   className={`relative z-10 w-13 h-13 rounded-2xl bg-gradient-to-br from-[#0c1938] to-[#040817] border-2 shadow-[0_0_20px_rgba(6,182,212,0.5)] flex flex-col items-center justify-center text-white transition-transform duration-100 ease-out ${
-                    autoStopTriggered
-                      ? 'border-rose-400 ring-4 ring-rose-400/60 shadow-[0_0_25px_rgba(244,63,94,0.8)]'
-                      : 'border-cyan-400 ring-2 ring-cyan-500/40'
+                    isBreached
+                      ? 'border-rose-500 ring-4 ring-rose-500/80 shadow-[0_0_35px_rgba(244,63,94,1)] animate-bounce'
+                      : isTumbled
+                        ? 'border-amber-500 ring-4 ring-amber-500/80 shadow-[0_0_30px_rgba(245,158,11,1)]'
+                        : autoStopTriggered
+                          ? 'border-rose-400 ring-4 ring-rose-400/60 shadow-[0_0_25px_rgba(244,63,94,0.8)]'
+                          : 'border-cyan-400 ring-2 ring-cyan-500/40'
                   }`}
                   style={{
-                    transform: `rotate(${carHeading}deg)`
+                    transform: `rotate(${carHeading}deg) rotateY(${rollAngleDeg}deg) scale(${isTumbled ? 0.88 : 1})`
                   }}
                 >
                   {/* Vehicle Heading Arrow */}
                   <div
                     className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[9px] -mt-1.5 filter drop-shadow-[0_0_4px_currentColor] ${
-                      autoStopTriggered ? 'border-b-rose-400 text-rose-400' : 'border-b-cyan-300 text-cyan-300'
+                      isBreached || autoStopTriggered ? 'border-b-rose-400 text-rose-400' : 'border-b-cyan-300 text-cyan-300'
                     }`}
                   ></div>
 
@@ -2051,31 +2356,102 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                     <div className="w-2 h-4.5 bg-gradient-to-b from-amber-300 to-amber-500 rounded-xs border border-amber-200 shadow-sm"></div>
                     <div
                       className={`w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-black shadow-inner border border-white/30 ${
-                        autoStopTriggered
+                        isBreached || autoStopTriggered
                           ? 'bg-rose-600 text-white'
-                          : 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white'
+                          : isTumbled
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white'
                       }`}
                     >
-                      UGV
+                      {isTumbled ? 'TMB' : isBreached ? 'ALM' : 'UGV'}
                     </div>
                     <div className="w-2 h-4.5 bg-gradient-to-b from-amber-300 to-amber-500 rounded-xs border border-amber-200 shadow-sm"></div>
                   </div>
                 </div>
 
                 {/* Status Callout Badge */}
-                <div className="absolute -bottom-7 bg-[#050c1b]/95 backdrop-blur-md text-cyan-300 border-2 border-cyan-400/60 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap shadow-[0_0_12px_rgba(6,182,212,0.4)]">
-                  {autoStopTriggered
-                    ? '🛑 AUTO STOP'
-                    : blinkingTurnSignal
-                      ? (blinkingTurnSignal === 'LEFT' ? '⬅️ বামে মোড় সিগন্যাল' : '➡️ ডানে মোড় সিগন্যাল')
-                      : speedKmh > 0
-                        ? `${speedKmh.toFixed(1)} km/h • ${carHeading.toFixed(0)}°`
-                        : 'UGV READY'}
+                <div
+                  className={`absolute -bottom-7 backdrop-blur-md border-2 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold whitespace-nowrap shadow-lg ${
+                    isBreached
+                      ? 'bg-rose-950/95 text-rose-200 border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.7)] animate-pulse'
+                      : isTumbled
+                        ? 'bg-amber-950/95 text-amber-200 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.7)] animate-pulse'
+                        : autoStopTriggered
+                          ? 'bg-rose-950/95 text-rose-200 border-rose-400 shadow-[0_0_12px_rgba(244,63,94,0.5)]'
+                          : 'bg-[#050c1b]/95 text-cyan-300 border-cyan-400/60 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                  }`}
+                >
+                  {isBreached
+                    ? '🚨 INTRUDER BREACH'
+                    : isTumbled
+                      ? '🚨 TUMBLE ALERT'
+                      : autoStopTriggered
+                        ? '🛑 AUTO STOP'
+                        : blinkingTurnSignal
+                          ? (blinkingTurnSignal === 'LEFT' ? '⬅️ বামে মোড় সিগন্যাল' : '➡️ ডানে মোড় সিগন্যাল')
+                          : speedKmh > 0
+                            ? `${speedKmh.toFixed(1)} km/h • ${carHeading.toFixed(0)}°`
+                            : 'UGV READY'}
                 </div>
               </div>
             </AdvancedMarker>
           </Map>
         </APIProvider>
+
+        {/* 360° Perimeter Defense Flashing Screen Border & Alert Banner */}
+        {isBreached && (
+          <>
+            <div className="absolute inset-0 z-20 pointer-events-none border-4 border-rose-500/80 animate-pulse shadow-[inset_0_0_60px_rgba(244,63,94,0.6)]"></div>
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-2xl bg-gradient-to-r from-rose-950 via-red-900 to-rose-950 text-rose-100 border-2 border-rose-400 shadow-[0_0_35px_rgba(244,63,94,0.9)] backdrop-blur-md flex items-center gap-3 font-bengali text-xs font-bold animate-bounce">
+              <ShieldAlert className="w-5 h-5 text-rose-300 animate-spin shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-[13px] font-black text-rose-100">
+                  {language === 'bn'
+                    ? `🚨 পেরিমিটার অনুপ্রবেশ! রোভারের ${breachDistanceMeters?.toFixed(1) || '২.০'} মিটারে অনুপ্রবেশকারী শনাক্ত!`
+                    : `🚨 PERIMETER BREACH! Intruder detected at ${breachDistanceMeters?.toFixed(1) || '2.0'}m!`}
+                </span>
+                <span className="text-[10px] text-rose-200">
+                  {language === 'bn'
+                    ? 'ইঞ্জিন লক করা হয়েছে • হাই-পিচ অ্যালার্ম ও ফ্ল্যাশার চলছে'
+                    : 'Engine Locked • High-Pitch Siren & Perimeter Strobes Active'}
+                </span>
+              </div>
+              <button
+                onClick={handleClearBreach}
+                className="ml-1 px-3 py-1 rounded-xl bg-white text-rose-950 font-black text-[11px] shadow-lg hover:bg-rose-100 cursor-pointer pointer-events-auto"
+              >
+                {language === 'bn' ? 'আনলক' : 'Unlock'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Tumble Alert & Self-Righting Roll-Over Recovery Floating Banner */}
+        {isTumbled && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-950 via-orange-900 to-amber-950 text-amber-100 border-2 border-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.9)] backdrop-blur-md flex items-center gap-3 font-bengali text-xs font-bold animate-bounce">
+            <RotateCw className={`w-5 h-5 text-amber-300 shrink-0 ${isSelfRightingActive ? 'animate-spin' : ''}`} />
+            <div className="flex flex-col">
+              <span className="text-[13px] font-black text-amber-100">
+                {language === 'bn'
+                  ? `🚨 TUMBLE ALERT: গাড়ি উল্টে গেছে (${Math.round(rollAngleDeg)}°)!`
+                  : `🚨 TUMBLE ALERT: UGV Inverted (${Math.round(rollAngleDeg)}°)!`}
+              </span>
+              <span className="text-[10px] text-amber-200">
+                {isSelfRightingActive
+                  ? selfRightingPhase
+                  : (language === 'bn' ? 'রিভার্স মোটর পালস অ্যালগরিদম প্রস্তুত' : 'Reverse motor pulse algorithm ready')}
+              </span>
+            </div>
+            <button
+              onClick={handleExecuteSelfRighting}
+              disabled={isSelfRightingActive}
+              className="ml-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black text-[11px] shadow-lg hover:brightness-110 cursor-pointer pointer-events-auto flex items-center gap-1"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSelfRightingActive ? 'animate-spin' : ''}`} />
+              <span>{language === 'bn' ? 'সোজা করুন' : 'Self-Right'}</span>
+            </button>
+          </div>
+        )}
 
         {/* Floating Turn Guidance Banner */}
         {activeTurn && distToNextTurnMeters !== null && distToNextTurnMeters <= 45 && (
