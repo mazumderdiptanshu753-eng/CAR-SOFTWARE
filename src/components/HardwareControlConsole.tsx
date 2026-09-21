@@ -20,21 +20,19 @@ import {
 } from 'lucide-react';
 
 interface HardwareControlConsoleProps {
-  language: Language;
-  telemetry: MotorTelemetry;
+    telemetry: MotorTelemetry;
   isRunning: boolean;
   onEmergencyStop: () => void;
   theme?: 'light' | 'dark';
 }
 
 export const HardwareControlConsole: React.FC<HardwareControlConsoleProps> = ({
-  language,
-  telemetry,
+    telemetry,
   isRunning,
   onEmergencyStop,
   theme = 'light'
 }) => {
-  const t = translations[language];
+  const t = translations.en;
   const isLight = theme === 'light';
 
   const [connectionState, setConnectionState] = useState<'DISCONNECTED' | 'CONNECTING' | 'CONNECTED'>('DISCONNECTED');
@@ -196,14 +194,12 @@ export const HardwareControlConsole: React.FC<HardwareControlConsoleProps> = ({
           <h2 className={`text-xl md:text-2xl font-bold font-bengali ${
             isLight ? 'text-slate-900' : 'text-white'
           }`}>
-            {language === 'bn' ? 'গাড়ির আসল হার্ডওয়্যার কন্ট্রোল ও সিরিয়াল ইন্টারফেস' : 'Physical UGV Hardware Control & Serial Actuator'}
+            {'Physical UGV Hardware Control & Serial Actuator'}
           </h2>
           <p className={`text-xs font-bengali mt-1 ${
             isLight ? 'text-slate-600' : 'text-slate-400'
           }`}>
-            {language === 'bn'
-              ? 'এই সফটওয়্যারটি ব্রাউজার থেকে সরাসরি USB কেবল, Serial Port (WebSerial) অথবা ROS2 ব্রিজের মাধ্যমে গাড়ির মোটর ড্রাইভার ও চাকা নিয়ন্ত্রণ করে।'
-              : 'Directly drives real vehicle hardware actuators (Arduino, ESP32, Cytron, Sabertooth) via W3C WebSerial or ROS2 WebSocket.'}
+            {'Directly drives real vehicle hardware actuators (Arduino, ESP32, Cytron, Sabertooth) via W3C WebSerial or ROS2 WebSocket.'}
           </p>
         </div>
 
@@ -214,7 +210,7 @@ export const HardwareControlConsole: React.FC<HardwareControlConsoleProps> = ({
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold text-sm shadow-lg shadow-rose-900/30 border border-rose-400 font-bengali transition-all cursor-pointer"
         >
           <Power className="w-5 h-5 animate-pulse" />
-          <span>{language === 'bn' ? 'ইমার্জেন্সি হার্ডওয়্যার ই-স্টপ (E-STOP)' : 'EMERGENCY HARDWARE STOP'}</span>
+          <span>{'EMERGENCY HARDWARE STOP'}</span>
         </button>
       </div>
 
@@ -322,8 +318,8 @@ export const HardwareControlConsole: React.FC<HardwareControlConsoleProps> = ({
               <Usb className="w-4 h-4" />
               <span>
                 {connectionState === 'CONNECTING'
-                  ? (language === 'bn' ? 'সংযোগ হচ্ছে...' : 'Connecting...')
-                  : (language === 'bn' ? 'হার্ডওয়্যারের সাথে কানেক্ট করুন' : 'Connect UGV Hardware')}
+                  ? ('Connecting...')
+                  : ('Connect UGV Hardware')}
               </span>
             </button>
           )}
@@ -356,7 +352,7 @@ export const HardwareControlConsole: React.FC<HardwareControlConsoleProps> = ({
                 isLight ? 'text-slate-900' : 'text-slate-100'
               }`}>
                 <Sliders className={`w-4 h-4 ${isLight ? 'text-amber-600' : 'text-amber-400'}`} />
-                <span>{language === 'bn' ? 'মোটর ড্রাইভার ড্রাইভ আউটপুট' : 'Motor Driver Actuation Signals'}</span>
+                <span>{'Motor Driver Actuation Signals'}</span>
               </div>
               <div className="flex items-center gap-2 text-2xs font-mono">
                 <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>Mode:</span>
@@ -397,9 +393,7 @@ export const HardwareControlConsole: React.FC<HardwareControlConsoleProps> = ({
                 }`}>
                   <CheckCircle2 className={`w-5 h-5 shrink-0 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} />
                   <span>
-                    {language === 'bn'
-                      ? 'স্বয়ংক্রিয় মোড সক্রিয়: পারসেপশন এআই ও এসএলএএম অ্যালগরিদম গাড়িকে বাধা থেকে বাঁচিয়ে রিয়েল-টাইমে এই সিগন্যাল হার্ডওয়্যার মোটরে পাঠাচ্ছে।'
-                      : 'Autonomous Mode Active: Real-time velocity and steering computed by Vision AI & SLAM are streaming directly to motor pins.'}
+                    {'Autonomous Mode Active: Real-time velocity and steering computed by Vision AI & SLAM are streaming directly to motor pins.'}
                   </span>
                 </div>
 
@@ -451,9 +445,7 @@ export const HardwareControlConsole: React.FC<HardwareControlConsoleProps> = ({
                 }`}>
                   <Sliders className={`w-4 h-4 shrink-0 ${isLight ? 'text-amber-700' : 'text-amber-400'}`} />
                   <span>
-                    {language === 'bn'
-                      ? 'ম্যানুয়াল টেস্টিং মোড: গাড়ির মোটর ও চাকার গতি সরাসরি স্লাইডার দিয়ে যাচাই করুন।'
-                      : 'Manual Jog Mode: Manually calibrate and test individual motor spin speeds and directions.'}
+                    {'Manual Jog Mode: Manually calibrate and test individual motor spin speeds and directions.'}
                   </span>
                 </div>
 
@@ -620,20 +612,20 @@ export const HardwareControlConsole: React.FC<HardwareControlConsoleProps> = ({
           }`}>
             <h4 className={`font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
               <Cpu className={`w-4 h-4 ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`} />
-              <span>সফটওয়্যারটি যেভাবে বাস্তব গাড়ির হার্ডওয়্যার পরিচালনা করে:</span>
+              <span>How This Software Controls Physical UGV Hardware:</span>
             </h4>
             <div className={`space-y-1.5 text-2xs leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
               <p>
-                <strong>১. চোখের ইনপুট:</strong> ক্যামেরা থেকে ইমেজ ক্যাপচার করে AI ড্রাইভ্যাবল পথ এবং বাধার দূরত্ব বের করে।
+                <strong>1. Vision Input:</strong> Camera feed is captured while perception AI infers drivable paths and obstacle distance.
               </p>
               <p>
-                <strong>২. ব্রেনের হিসাব:</strong> ডিডব্লিউএ (DWA) অ্যালগরিদম হিসাব করে সামনের চাকাগুলোকে কত স্পিডে এবং কোন কোণে ঘুরাতে হবে।
+                <strong>2. Brain & Planner:</strong> Dynamic Window Approach (DWA) computes steering angle and speed for each wheel.
               </p>
               <p>
-                <strong>৩. হাতের অ্যাকচুয়েশন:</strong> ব্রাউজারের <code>WebSerial</code> API বা ROS2 নোড তাৎক্ষণিকভাবে <code>0xAA 0x05 [PWM_L] [PWM_R]</code> প্যাকেট পাঠায়।
+                <strong>3. Hand Actuation:</strong> Browser <code>WebSerial</code> API or ROS2 bridge transmits low-latency <code>0xAA 0x05 [PWM_L] [PWM_R]</code> command packets.
               </p>
               <p>
-                <strong>৪. ড্রাইভারে রূপান্তর:</strong> আর্দুইনো/ESP32 সিগন্যালটি গ্রহণ করে L298N বা Cytron MDD10A-তে উচ্চ ক্ষমতার 12V কারেন্ট জেনারেট করে গাড়ির ৪টি চাকা ঘুরিয়ে দেয়।
+                <strong>4. Motor Power:</strong> Arduino/ESP32 receives packets and drives high-power Cytron MDD10A / L298N motor drivers to actuate wheels.
               </p>
             </div>
           </div>

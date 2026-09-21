@@ -12,82 +12,82 @@ export interface PresetLocation {
 export const PRESET_LOCATIONS: PresetLocation[] = [
   {
     id: 'dhanmondi-lake',
-    nameBn: 'ধানমন্ডি লেক',
+    nameBn: 'Dhanmondi Lake',
     nameEn: 'Dhanmondi Lake',
     lat: 23.7461,
     lng: 90.3758,
-    descriptionBn: 'ধানমন্ডি লেক পার্ক ও ওয়াকওয়ে জোন',
+    descriptionBn: 'Dhanmondi Lake Park & Walkway',
     descriptionEn: 'Dhanmondi Lake Park & Walkway',
-    keywords: ['ধানমন্ডি', 'লেক', 'dhanmondi', 'lake', 'park']
+    keywords: ['dhanmondi', 'lake', 'park']
   },
   {
     id: 'du-curzon',
-    nameBn: 'ঢাকা বিশ্ববিদ্যালয় (কার্জন হল)',
+    nameBn: 'Curzon Hall, DU',
     nameEn: 'Curzon Hall, DU',
     lat: 23.7265,
     lng: 90.4011,
-    descriptionBn: 'ঐতিহাসিক কার্জন হল ও সায়েন্স ক্যাম্পাস',
+    descriptionBn: 'Historic Curzon Hall Campus',
     descriptionEn: 'Historic Curzon Hall Campus',
-    keywords: ['ঢাকা বিশ্ববিদ্যালয়', 'কার্জন', 'curzon', 'du', 'university']
+    keywords: ['curzon', 'du', 'university']
   },
   {
     id: 'parliament',
-    nameBn: 'জাতীয় সংসদ ভবন',
+    nameBn: 'National Parliament Bhaban',
     nameEn: 'National Parliament Bhaban',
     lat: 23.7625,
     lng: 90.3787,
-    descriptionBn: 'মানিক মিয়া এভিনিউ ও সংসদ চত্বর',
+    descriptionBn: 'Manik Mia Ave & Parliament Plaza',
     descriptionEn: 'Manik Mia Ave & Parliament Plaza',
-    keywords: ['সংসদ', 'জাতীয় সংসদ', 'parliament', 'manik mia']
+    keywords: ['parliament', 'manik mia']
   },
   {
     id: 'gulshan-2',
-    nameBn: 'গুলশান ২ চত্বর',
+    nameBn: 'Gulshan 2 Circle',
     nameEn: 'Gulshan 2 Circle',
     lat: 23.7946,
     lng: 90.4143,
-    descriptionBn: 'গুলশান সেন্ট্রাল মোড় ও ডিপ্লোম্যাটিক জোন',
+    descriptionBn: 'Gulshan 2 Circle & Diplomatic Zone',
     descriptionEn: 'Gulshan 2 Circle & Diplomatic Zone',
-    keywords: ['গুলশান', 'গুলশান ২', 'gulshan', 'gulshan 2']
+    keywords: ['gulshan', 'gulshan 2']
   },
   {
     id: 'ramna-park',
-    nameBn: 'রমনা পার্ক',
+    nameBn: 'Ramna Park',
     nameEn: 'Ramna Park',
     lat: 23.7388,
     lng: 90.3995,
-    descriptionBn: 'সবুজ আউটডোর পার্ক ও লেক রোড',
+    descriptionBn: 'Green Outdoor Park & Lake Road',
     descriptionEn: 'Green Outdoor Park & Lake Road',
-    keywords: ['রমনা', 'রমনা পার্ক', 'ramna', 'park']
+    keywords: ['ramna', 'park']
   },
   {
     id: 'bashundhara-city',
-    nameBn: 'পান্থপথ (বসুন্ধরা সিটি)',
+    nameBn: 'Panthapath (Bashundhara City)',
     nameEn: 'Panthapath (Bashundhara City)',
     lat: 23.7508,
     lng: 90.3905,
-    descriptionBn: 'পান্থপথ রোবটিক্স ট্রায়াল জোন',
+    descriptionBn: 'Panthapath Robotics Trial Zone',
     descriptionEn: 'Panthapath Robotics Trial Zone',
-    keywords: ['পান্থপথ', 'বসুন্ধরা', 'panthapath', 'bashundhara']
+    keywords: ['panthapath', 'bashundhara']
   },
   {
     id: 'airport-road',
-    nameBn: 'শাহজালাল বিমানবন্দর রোড',
+    nameBn: 'Airport Road, Uttara',
     nameEn: 'Airport Road, Uttara',
     lat: 23.8512,
     lng: 90.4079,
-    descriptionBn: 'উত্তরা এক্সপ্রেসওয়ে আউটডোর করিডোর',
+    descriptionBn: 'Expressway Outdoor Corridor',
     descriptionEn: 'Expressway Outdoor Corridor',
-    keywords: ['বিমানবন্দর', 'এয়ারপোর্ট', 'airport', 'uttara']
+    keywords: ['airport', 'uttara']
   },
   {
     id: 'robotics-field',
-    nameBn: 'ইউজিভি আউটডোর টেস্ট ট্র্যাক',
+    nameBn: 'UGV Outdoor Test Track',
     nameEn: 'UGV Outdoor Test Track',
     lat: 23.7550,
     lng: 90.3800,
-    descriptionBn: 'সার্চ অ্যান্ড রেসকিউ ওপেন গ্রাউন্ড',
+    descriptionBn: 'Search & Rescue Open Ground',
     descriptionEn: 'Search & Rescue Open Ground',
-    keywords: ['টেস্ট', 'ট্র্যাক', 'test', 'track', 'field']
+    keywords: ['test', 'track', 'field']
   }
 ];

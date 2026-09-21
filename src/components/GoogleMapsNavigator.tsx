@@ -58,6 +58,7 @@ import {
   MapObstacle,
   RouteTurnManeuver,
   TrafficJamZone,
+  WaterBodyZone,
   calculateDistanceMeters,
   calculateBearing,
   generateRoadWaypoints,
@@ -65,19 +66,22 @@ import {
   findObstacleOnPath,
   generateObstacleAvoidanceDetour,
   generateProactiveJamBypass,
+  generateWaterBodyBypass,
   computeAutoAdjustedSpeed,
   calculatePathCumulativeDistances,
   interpolatePositionAlongPath,
+  clampToRoadCorridor,
+  ensureRouteAvoidsWater,
   smoothAngleLerp,
   speakPrompt
 } from '../utils/geoUtils';
-import { Language, Theme, PerceptionData } from '../types';
+import { Theme, PerceptionData } from '../types';
 import { MachineLearningPanel } from './MachineLearningPanel';
 import { UGVDefensiveSafetyModule } from './UGVDefensiveSafetyModule';
+import { CelestialOdometryPanel, OdometryMetrics, CelestialStar } from './CelestialOdometryPanel';
 import { ugvDefensiveAudio } from '../utils/sirenAudio';
 
 interface GoogleMapsNavigatorProps {
-  language: Language;
   theme: Theme;
   onEmergencyStop?: () => void;
   onAutoStopStateChange?: (active: boolean) => void;
@@ -265,7 +269,6 @@ const INITIAL_UGV_POSITION: GeoCoordinate = {
 const INITIAL_MAP_OBSTACLES: MapObstacle[] = [];
 
 export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
-  language,
   theme,
   onEmergencyStop,
   onAutoStopStateChange
@@ -314,16 +317,21 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const [originalBlockedRoute, setOriginalBlockedRoute] = useState<GeoCoordinate[]>([]);
   const [distanceRemainingMeters, setDistanceRemainingMeters] = useState<number>(0);
 
-  // Turn Maneuver State (১ বা ২টি ক্ষেত্রে নির্দিষ্ট দিকে মোড় নেওয়া)
+  // Turn Maneuver State (Waypoint turns)
   const [routeTurns, setRouteTurns] = useState<RouteTurnManeuver[]>([]);
   const [activeTurn, setActiveTurn] = useState<RouteTurnManeuver | null>(null);
   const [distToNextTurnMeters, setDistToNextTurnMeters] = useState<number | null>(null);
   const [blinkingTurnSignal, setBlinkingTurnSignal] = useState<'LEFT' | 'RIGHT' | null>(null);
 
-  // Proactive Traffic Jam Bypass State (রাস্তায় জ্যাম থাকলে আগে থেকেই সেই রোড এড়িয়ে চলা)
+  // Proactive Traffic Jam Bypass State (Proactive traffic jam bypass)
   const [trafficJamZone, setTrafficJamZone] = useState<TrafficJamZone | null>(null);
   const [jammedRoadSegment, setJammedRoadSegment] = useState<GeoCoordinate[]>([]);
   const [jamAvoidanceDetourActive, setJamAvoidanceDetourActive] = useState<boolean>(false);
+
+  // Water Body & Lake Avoidance State
+  const [waterBodyZone, setWaterBodyZone] = useState<WaterBodyZone | null>(null);
+  const [waterAvoidanceDetourActive, setWaterAvoidanceDetourActive] = useState<boolean>(false);
+  const [waterSegment, setWaterSegment] = useState<GeoCoordinate[]>([]);
 
   // Motor Telemetry
   const [motorPwmLeft, setMotorPwmLeft] = useState<number>(0);
@@ -335,9 +343,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const [speechTranscript, setSpeechTranscript] = useState<string>('');
   const [voiceVoiceFeedback, setVoiceFeedback] = useState<boolean>(true);
   const [statusMessage, setStatusMessage] = useState<string>(
-    language === 'bn'
-      ? 'গুগল ম্যাপে আপনার গন্তব্য বলুন বা সিলেক্ট করুন'
-      : 'Speak or select destination on Google Maps'
+    'Speak or select destination on Google Maps'
   );
 
   // Hardware WebSerial & UI Layout States
@@ -346,6 +352,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const [isCameraHudExpanded, setIsCameraHudExpanded] = useState<boolean>(false);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showMLModal, setShowMLModal] = useState<boolean>(false);
+  const [showRdModal, setShowRdModal] = useState<boolean>(false);
 
   // 360° Geofence Perimeter Defense & Anti-Tamper States
   const [isPerimeterArmed, setIsPerimeterArmed] = useState<boolean>(true);
@@ -361,6 +368,29 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const [isSelfRightingActive, setIsSelfRightingActive] = useState<boolean>(false);
   const [selfRightingPhase, setSelfRightingPhase] = useState<string>('');
   const [autoSelfRightEnabled, setAutoSelfRightEnabled] = useState<boolean>(true);
+
+  // Satellite-Denied Navigation (Wheel Encoders + Optical Flow + Celestial Star Tracker)
+  const [isGpsDenied, setIsGpsDenied] = useState<boolean>(false);
+  const [isTunnelActive, setIsTunnelActive] = useState<boolean>(false);
+  const [odometryMetrics, setOdometryMetrics] = useState<OdometryMetrics>({
+    wheelTicksLeft: 18450,
+    wheelTicksRight: 18452,
+    wheelSlipPercent: 0.8,
+    opticalFlowVx: 0,
+    opticalFlowVy: 0,
+    opticalGroundConfidence: 99,
+    celestialHeadingErrorDeg: 0.02,
+    kalmanPositionDriftMm: 12,
+    activeFixType: 'GPS_RTK'
+  });
+
+  const [celestialStars, setCelestialStars] = useState<CelestialStar[]>([
+    { name: 'Polaris (North Star)', altitudeDeg: 62.4, azimuthDeg: 0.1, magnitude: 1.98, lockStatus: 'LOCKED' },
+    { name: 'Vega (Alpha Lyrae)', altitudeDeg: 78.1, azimuthDeg: 284.5, magnitude: 0.03, lockStatus: 'LOCKED' },
+    { name: 'Sirius (Alpha Canis Majoris)', altitudeDeg: 42.6, azimuthDeg: 145.2, magnitude: -1.46, lockStatus: 'LOCKED' },
+    { name: 'Arcturus (Alpha Boötis)', altitudeDeg: 55.3, azimuthDeg: 98.7, magnitude: -0.05, lockStatus: 'LOCKED' },
+    { name: 'Betelgeuse (Alpha Orionis)', altitudeDeg: 34.8, azimuthDeg: 215.0, magnitude: 0.50, lockStatus: 'TRACKING' }
+  ]);
 
   // Refs for Smooth 60 FPS Motion Loop & Autonomous Scheduler
   const recognitionRef = useRef<any>(null);
@@ -467,10 +497,10 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
 
     // Obstacle types pool
     const obstacleCatalog: Array<{ type: MapObstacle['type']; labelBn: string; labelEn: string; icon: string; radius: number }> = [
-      { type: 'vehicle', labelBn: 'রাস্তায় স্থবির গাড়ি / জ্যাম', labelEn: 'Stopped Vehicle / Traffic', icon: '🚗', radius: 7.0 },
-      { type: 'construction', labelBn: 'রাস্তা সংস্কার ও ব্যারিকেড', labelEn: 'Road Works Barrier', icon: '🚧', radius: 6.5 },
-      { type: 'pedestrian', labelBn: 'রাস্তায় পথচারী ক্রসিং', labelEn: 'Pedestrian Crossing', icon: '🚶', radius: 5.5 },
-      { type: 'barrier', labelBn: 'ট্রাফিক ডাইভারশন রোড ব্লক', labelEn: 'Traffic Roadblock', icon: '🛑', radius: 6.5 },
+      { type: 'vehicle', labelBn: 'Stopped Vehicle / Traffic', labelEn: 'Stopped Vehicle / Traffic', icon: '🚗', radius: 7.0 },
+      { type: 'construction', labelBn: 'Road Works Barrier', labelEn: 'Road Works Barrier', icon: '🚧', radius: 6.5 },
+      { type: 'pedestrian', labelBn: 'Pedestrian Crossing', labelEn: 'Pedestrian Crossing', icon: '🚶', radius: 5.5 },
+      { type: 'barrier', labelBn: 'Traffic Roadblock', labelEn: 'Traffic Roadblock', icon: '🛑', radius: 6.5 },
     ];
 
     if (count === 1) {
@@ -528,11 +558,38 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
 
   // Recalculate route whenever destination or starting point changes
   const planRouteTo = useCallback((targetCoord: GeoCoordinate) => {
-    // Generate smooth road waypoints with 1 or 2 distinct intersection turns (মাঝে মাঝে ১ বা ২টি ক্ষেত্রে নির্দিষ্ট দিকে মোড় নেওয়া)
+    // Generate smooth road waypoints with 1 or 2 distinct intersection turns (Waypoint turns)
     const { waypoints, turns } = generateRoadWaypointsWithTurns(carPosRef.current, targetCoord);
-    setRouteCoordinates(waypoints);
-    routeCoordsRef.current = waypoints;
-    cumulativeDistsRef.current = calculatePathCumulativeDistances(waypoints);
+
+    // Automatic Background Water Body & Lake Avoidance Check
+    const lakeCenter = { lat: 23.7461, lng: 90.3758 };
+    const distToLake = calculateDistanceMeters(targetCoord, lakeCenter);
+
+    let finalWaypoints = waypoints;
+    if (distToLake < 800 || waypoints.some(p => calculateDistanceMeters(p, lakeCenter) < 300)) {
+      const bypass = generateWaterBodyBypass(waypoints, carPosRef.current, lakeCenter, 45.0);
+      finalWaypoints = bypass.bypassedRoute;
+      setWaterBodyZone({
+        id: `water-${Date.now()}`,
+        lat: lakeCenter.lat,
+        lng: lakeCenter.lng,
+        nameBn: 'Dhanmondi Lake Reservoir',
+        nameEn: 'Dhanmondi Lake Reservoir',
+        radiusMeters: 45.0,
+        active: true,
+        avoided: true
+      });
+      setWaterSegment(bypass.waterSegment);
+      setWaterAvoidanceDetourActive(true);
+    } else {
+      setWaterBodyZone(null);
+      setWaterAvoidanceDetourActive(false);
+      setWaterSegment([]);
+    }
+
+    setRouteCoordinates(finalWaypoints);
+    routeCoordsRef.current = finalWaypoints;
+    cumulativeDistsRef.current = calculatePathCumulativeDistances(finalWaypoints);
     travelledMetersRef.current = 0;
 
     // Set planned turns
@@ -560,9 +617,42 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     obstaclesRef.current = [];
     setNearestObstacle(null);
     setNearestDistMeters(null);
-  }, []);
+  }, [voiceVoiceFeedback]);
 
-  // Proactive Traffic Jam Bypass Handler (রাস্তায় জ্যাম থাকলে গাড়ি আগে থেকেই সেই রোড এড়িয়ে বিকল্প রাস্তায় মোড় নেবে)
+  // Water Body & Lake Avoidance Handler
+  const handleProactiveWaterAvoidance = useCallback(() => {
+    if (waterAvoidanceDetourActive || routeCoordsRef.current.length < 3) return;
+
+    const waterCenter = { lat: destination.lat + 0.0018, lng: destination.lng - 0.0018 };
+    const zone: WaterBodyZone = {
+      id: `water-${Date.now()}`,
+      lat: waterCenter.lat,
+      lng: waterCenter.lng,
+      nameBn: 'Dhanmondi Lake Reservoir',
+      nameEn: 'Dhanmondi Lake Reservoir',
+      radiusMeters: 35.0,
+      active: true,
+      avoided: true
+    };
+    setWaterBodyZone(zone);
+
+    const { bypassedRoute, waterSegment: seg, streetName } = generateWaterBodyBypass(
+      routeCoordsRef.current,
+      carPosRef.current,
+      waterCenter,
+      40.0
+    );
+
+    setWaterSegment(seg);
+    setOriginalBlockedRoute([...routeCoordsRef.current]);
+    setRouteCoordinates(bypassedRoute);
+    routeCoordsRef.current = bypassedRoute;
+    cumulativeDistsRef.current = calculatePathCumulativeDistances(bypassedRoute);
+    travelledMetersRef.current = 0;
+    setWaterAvoidanceDetourActive(true);
+  }, [destination, waterAvoidanceDetourActive, voiceVoiceFeedback]);
+
+  // Proactive Traffic Jam Bypass Handler (Proactive traffic jam bypass)
   const handleProactiveJamAvoidance = useCallback((jam: TrafficJamZone) => {
     if (jam.bypassed || routeCoordsRef.current.length < 3) return;
 
@@ -590,21 +680,17 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     travelledMetersRef.current = 0;
     setJamAvoidanceDetourActive(true);
 
-    const street = language === 'bn' ? clearStreetNameBn : clearStreetNameEn;
+    const street = clearStreetNameEn;
     const msg =
-      language === 'bn'
-        ? `🚨 সামনে সড়কে তীব্র যানজট শনাক্ত! গাড়ি আগে থেকেই ${street}-এ মোড় নিয়ে জ্যামযুক্ত রাস্তা এড়িয়ে চলছে।`
-        : `🚨 Heavy traffic jam detected ahead! Vehicle proactively turning early onto ${street} to bypass congested road.`;
+      `🚨 Heavy traffic jam detected ahead! Vehicle proactively turning early onto ${street} to bypass congested road.`;
     setStatusMessage(msg);
     if (voiceVoiceFeedback) {
       speakPrompt(
-        language === 'bn'
-          ? `সামনে রাস্তায় তীব্র যানজট রয়েছে। গাড়ি আগে থেকেই বিকল্প ফাঁকা রাস্তায় মোড় নিয়ে জ্যাম এড়িয়ে চলছে।`
-          : `Traffic jam detected ahead. Proactively taking alternate clear street in advance to avoid delay.`,
-        language
+        `Traffic jam detected ahead. Proactively taking alternate clear street in advance to avoid delay.`,
+        'en'
       );
     }
-  }, [language, voiceVoiceFeedback]);
+  }, [ voiceVoiceFeedback]);
 
   // Simulate traffic jam ahead along current driving direction (~60-70 meters ahead)
   const handleSimulateTrafficJamAhead = useCallback(() => {
@@ -627,7 +713,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
       id: `traffic-jam-${Date.now()}`,
       lat: jamCoord.lat,
       lng: jamCoord.lng,
-      roadNameBn: 'ধানমন্ডি মেইন রোড (তীব্র যানজট)',
+      roadNameBn: 'Dhanmondi Main Road (Congested)',
       roadNameEn: 'Main Roadway (Congested)',
       radiusMeters: 22.0,
       jammedSegment: [],
@@ -640,17 +726,23 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     setJamAvoidanceDetourActive(false);
 
     const msg =
-      language === 'bn'
-        ? '🚨 সামনে সড়কে তীব্র যানজট রিপোর্ট করা হয়েছে (৬৫ মি. দূরে)! গাড়ি আগে থেকেই এই রাস্তা এড়িয়ে বিকল্প রোডে চলবে।'
-        : '🚨 Severe traffic jam reported ahead (65m away)! Vehicle will proactively bypass this road ahead of time.';
+      '🚨 Severe traffic jam reported ahead (65m away)! Vehicle will proactively bypass this road ahead of time.';
     setStatusMessage(msg);
-    if (voiceVoiceFeedback) speakPrompt(msg, language);
-  }, [language, voiceVoiceFeedback]);
+    if (voiceVoiceFeedback) speakPrompt(msg, 'en');
+  }, [ voiceVoiceFeedback]);
 
   // Initial route generation on mount or destination change
   useEffect(() => {
     planRouteTo({ lat: destination.lat, lng: destination.lng });
   }, [destination, planRouteTo]);
+
+  // Startup welcome greeting (Only one startup voice greeting)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      speakPrompt('HELLO USER WELLCOME TO SMART UGV CAR SYSTEM', 'en');
+    }, 900);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Initialize Web Speech API for voice command recognition
   useEffect(() => {
@@ -661,7 +753,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = language === 'bn' ? 'bn-BD' : 'en-US';
+      recognition.lang = 'en-US';
 
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript.trim().toLowerCase();
@@ -674,9 +766,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         console.warn('Speech recognition error:', err);
         setIsListening(false);
         setStatusMessage(
-          language === 'bn'
-            ? 'কথা বুঝতে সমস্যা হয়েছে। অনুগ্রহ করে আবার বলুন বা সার্চ বক্সে লিখুন।'
-            : 'Could not capture voice. Please try speaking again or search below.'
+          'Could not capture voice. Please try speaking again or search below.'
         );
       };
 
@@ -694,12 +784,12 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         } catch (_) {}
       }
     };
-  }, [language]);
+  }, []);
 
   // Handle voice speech query
   const handleVoiceCommand = (transcript: string) => {
     const query = transcript.toLowerCase();
-    setStatusMessage(language === 'bn' ? `আপনি বলেছেন: "${transcript}"` : `You said: "${transcript}"`);
+    setStatusMessage(`You said: "${transcript}"`);
 
     // Match with presets
     const matched = PRESET_LOCATIONS.find(loc =>
@@ -714,10 +804,8 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
       startDriving();
 
       const announce =
-        language === 'bn'
-          ? `গন্তব্য সনাক্ত হয়েছে: ${matched.nameBn}। গাড়ি যাত্রা শুরু করছে।`
-          : `Destination confirmed: ${matched.nameEn}. Autonomous vehicle starting.`;
-      if (voiceVoiceFeedback) speakPrompt(announce, language);
+        `Destination confirmed: ${matched.nameEn}. Autonomous vehicle starting.`;
+      if (voiceVoiceFeedback) speakPrompt(announce, 'en');
       setStatusMessage(announce);
     } else {
       // Create search target near current position with offset
@@ -732,10 +820,8 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
       startDriving();
 
       const announce =
-        language === 'bn'
-          ? `গন্তব্য "${transcript}" নির্ধারণ করা হয়েছে। গাড়ি এগিয়ে যাচ্ছে।`
-          : `Destination set to "${transcript}". Navigating now.`;
-      if (voiceVoiceFeedback) speakPrompt(announce, language);
+        `Destination set to "${transcript}". Navigating now.`;
+      if (voiceVoiceFeedback) speakPrompt(announce, 'en');
       setStatusMessage(announce);
     }
   };
@@ -744,9 +830,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const toggleListening = () => {
     if (!recognitionRef.current) {
       alert(
-        language === 'bn'
-          ? 'আপনার ব্রাউজার ভয়েস স্পিচ সমর্থন করে না। অনুগ্রহ করে সার্চ বক্স ব্যবহার করুন।'
-          : 'Your browser does not support Speech Recognition. Please use the search input.'
+        'Your browser does not support Speech Recognition. Please use the search input.'
       );
       return;
     }
@@ -757,12 +841,10 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     } else {
       setSpeechTranscript('');
       setStatusMessage(
-        language === 'bn'
-          ? 'শুনছি... আপনি কোথায় যেতে চান তা বলুন (যেমন: ধানমন্ডি লেক, সংসদ ভবন, শাহবাগ)'
-          : 'Listening... Please speak your destination (e.g., Dhanmondi Lake, Parliament)'
+        'Listening... Please speak your destination (e.g., Dhanmondi Lake, Parliament)'
       );
       try {
-        recognitionRef.current.lang = language === 'bn' ? 'bn-BD' : 'en-US';
+        recognitionRef.current.lang = 'en-US';
         recognitionRef.current.start();
         setIsListening(true);
       } catch (err) {
@@ -775,17 +857,13 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const startDriving = () => {
     if (isEngineLockedRef.current) {
       const msg =
-        language === 'bn'
-          ? '⚠️ ইঞ্জিন লক করা রয়েছে! প্রথমে পেরিমিটার অনুপ্রবেশ অ্যালার্ম আনলক করুন।'
-          : '⚠️ Engine is locked! Reset perimeter breach alarm first.';
+        '⚠️ Engine is locked! Reset perimeter breach alarm first.';
       setStatusMessage(msg);
       return;
     }
     if (isTumbledRef.current) {
       const msg =
-        language === 'bn'
-          ? '⚠️ গাড়ি উল্টে রয়েছে! সোজা করতে রিভার্স মোটর পালস বোতাম চাপুন।'
-          : '⚠️ Rover is inverted! Execute reverse motor pulse self-righting first.';
+        '⚠️ Rover is inverted! Execute reverse motor pulse self-righting first.';
       setStatusMessage(msg);
       return;
     }
@@ -813,13 +891,11 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     speedKmhRef.current = baseCruiseSpeed * 0.7;
     setAutoFollowMap(true);
     setStatusMessage(
-      language === 'bn'
-        ? 'অটো রান সক্রিয়: গাড়ি স্বয়ংক্রিয়ভাবে চলছে। বাধা এলে স্পিড কমাবে অথবা বিকল্প ফাঁকা রাস্তা দিয়ে গন্তব্যে পৌঁছাবে।'
-        : 'AUTO RUN Active: Vehicle navigating smoothly. Auto speed reduction & clear road detour active.'
+      'AUTO RUN Active: Vehicle navigating smoothly. Auto speed reduction & clear road detour active.'
     );
   };
 
-  // Trigger 360° Perimeter Breach Alarm (ইঞ্জিন লক, হাই-পিচ অ্যালার্ম ও ফ্ল্যাশার চালু)
+  // Trigger 360° Perimeter Breach Alarm (Engine lock, siren, and strobes)
   const triggerPerimeterBreach = (distMeters: number) => {
     setIsBreached(true);
     isBreachedRef.current = true;
@@ -839,16 +915,12 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     }
 
     const msg =
-      language === 'bn'
-        ? `🚨 পেরিমিটার অনুপ্রবেশ! রোভারের ২ মিটারের মধ্যে (${distMeters.toFixed(1)}m) অনুপ্রবেশকারী শনাক্ত — ইঞ্জিন লক ও ফ্ল্যাশার সক্রিয়!`
-        : `🚨 PERIMETER BREACH! Intruder detected within 2m (${distMeters.toFixed(1)}m) — Engine locked & flashers active!`;
+      `🚨 PERIMETER BREACH! Intruder detected within 2m (${distMeters.toFixed(1)}m) — Engine locked & flashers active!`;
     setStatusMessage(msg);
     if (voiceVoiceFeedback) {
       speakPrompt(
-        language === 'bn'
-          ? `সতর্কতা! ২ মিটারের মধ্যে অনুপ্রবেশকারী শনাক্ত। ইঞ্জিন লক এবং অ্যালার্ম চালু করা হয়েছে।`
-          : `Warning! Perimeter breach detected. Engine locked and defensive alarm engaged.`,
-        language
+        `Warning! Perimeter breach detected. Engine locked and defensive alarm engaged.`,
+        'en'
       );
     }
   };
@@ -862,9 +934,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     setIsEngineLocked(false);
     isEngineLockedRef.current = false;
     const msg =
-      language === 'bn'
-        ? '🛡️ পেরিমিটার পুনরায় সুরক্ষিত করা হয়েছে। ইঞ্জিন আনলক সম্পন্ন।'
-        : '🛡️ Perimeter secure. Engine unlocked and ready.';
+      '🛡️ Perimeter secure. Engine unlocked and ready.';
     setStatusMessage(msg);
   };
 
@@ -873,7 +943,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     triggerPerimeterBreach(1.4);
   };
 
-  // Simulate Rollover (180° Inversion / উল্টে যাওয়া)
+  // Simulate Rollover (180° Inversion / Rollover)
   const handleSimulateRollover = () => {
     setRollAngleDeg(180);
     setIsTumbled(true);
@@ -887,16 +957,12 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     setSteeringMode('STOP');
 
     const msg =
-      language === 'bn'
-        ? '🚨 TUMBLE ALERT: গাড়ি ১৮০° উল্টে গেছে! রিভার্স মোটর পালস দিয়ে সোজা করার অ্যালগরিদম কার্যকর করুন।'
-        : '🚨 TUMBLE ALERT: Vehicle inverted 180°! Execute reverse motor pulse to self-right.';
+      '🚨 TUMBLE ALERT: Vehicle inverted 180°! Execute reverse motor pulse to self-right.';
     setStatusMessage(msg);
     if (voiceVoiceFeedback) {
       speakPrompt(
-        language === 'bn'
-          ? 'টাম্বল অ্যালার্ট! গাড়িটি উল্টে গেছে। রিভার্স মোটর পালস অ্যালগরিদম প্রস্তুত।'
-          : 'Tumble alert! Vehicle rollover detected. Reverse motor pulse algorithm standing by.',
-        language
+        'Tumble alert! Vehicle rollover detected. Reverse motor pulse algorithm standing by.',
+        'en'
       );
     }
 
@@ -914,9 +980,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     ugvDefensiveAudio.playKineticRightingPulse();
 
     setSelfRightingPhase(
-      language === 'bn'
-        ? 'পালস ১: হাই-টর্ক রিভার্স মোটর বিস্ফোরণ (PWM 255)'
-        : 'Pulse 1: High-Torque Reverse Motor Burst (PWM 255)'
+      'Pulse 1: High-Torque Reverse Motor Burst (PWM 255)'
     );
     setMotorPwmLeft(255);
     setMotorPwmRight(255);
@@ -924,9 +988,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
 
     setTimeout(() => {
       setSelfRightingPhase(
-        language === 'bn'
-          ? 'পালস ২: কাউন্টার-মোমেন্টাম কৌণিক টর্ক কিক'
-          : 'Pulse 2: Counter-Momentum Angular Torque Kick'
+        'Pulse 2: Counter-Momentum Angular Torque Kick'
       );
       ugvDefensiveAudio.playKineticRightingPulse();
       setRollAngleDeg(90);
@@ -934,9 +996,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
 
     setTimeout(() => {
       setSelfRightingPhase(
-        language === 'bn'
-          ? 'পালস ৩: কাইনেটিক ফ্লিপ ও ব্যালান্সিং'
-          : 'Pulse 3: Kinetic Flip & Alignment'
+        'Pulse 3: Kinetic Flip & Alignment'
       );
       setRollAngleDeg(25);
     }, 900);
@@ -947,26 +1007,83 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
       isTumbledRef.current = false;
       setIsSelfRightingActive(false);
       setSelfRightingPhase(
-        language === 'bn' ? '✓ গাড়ি সফলভাবে সোজা হয়েছে!' : '✓ Vehicle successfully upright!'
+        '✓ Vehicle successfully upright!'
       );
       setMotorPwmLeft(0);
       setMotorPwmRight(0);
       setSteeringMode('STOP');
 
       const doneMsg =
-        language === 'bn'
-          ? '✅ রিভার্স মোটর পালস সফল! গাড়ি সোজা হয়েছে এবং ড্রাইভের জন্য প্রস্তুত।'
-          : '✅ Self-righting complete! Rover upright and ready to navigate.';
+        '✅ Self-righting complete! Rover upright and ready to navigate.';
       setStatusMessage(doneMsg);
       if (voiceVoiceFeedback) {
         speakPrompt(
-          language === 'bn'
-            ? 'রিভার্স মোটর পালস সফল হয়েছে। গাড়ি সোজা এবং সুরক্ষিত।'
-            : 'Self-righting algorithm completed. Rover is upright and secure.',
-          language
+          'Self-righting algorithm completed. Rover is upright and secure.',
+          'en'
         );
       }
     }, 1400);
+  };
+
+  // Toggle GPS Denied / Jammed Mode
+  const handleToggleGpsDenied = () => {
+    setIsGpsDenied(prev => {
+      const next = !prev;
+      setOdometryMetrics(m => ({
+        ...m,
+        activeFixType: next ? 'DEAD_RECKONING_FUSION' : 'GPS_RTK',
+        kalmanPositionDriftMm: next ? 18 : 6
+      }));
+      const msg = next
+        ? ('📡 GPS Jammed / Signal Denied! Automatically transitioned to Wheel Encoders, Optical Flow & Celestial Star Dead-Reckoning.')
+        : ('🛰️ GPS receiver lock restored (RTK Fix).');
+      setStatusMessage(msg);
+      if (voiceVoiceFeedback) {
+        speakPrompt(
+          next
+            ? ('GPS signal lost. Sub-centimeter dead-reckoning and star tracker active.')
+            : ('GPS signal restored.'),
+          'en'
+        );
+      }
+      return next;
+    });
+  };
+
+  // Simulate Underground Tunnel Mode
+  const handleSimulateTunnelMode = () => {
+    setIsTunnelActive(prev => {
+      const next = !prev;
+      if (next) {
+        setIsGpsDenied(true);
+        setOdometryMetrics(m => ({
+          ...m,
+          activeFixType: 'CELESTIAL_VIO_LOCK',
+          opticalGroundConfidence: 97,
+          wheelSlipPercent: 0.4
+        }));
+        const msg =
+          '🚇 Underground Tunnel Mode: 0 Satellites! Navigating with precision wheel tick counters & ground optical flow.';
+        setStatusMessage(msg);
+        if (voiceVoiceFeedback) {
+          speakPrompt(
+            'Entering tunnel. Navigating with optical flow and wheel encoders.',
+            'en'
+          );
+        }
+      } else {
+        setIsGpsDenied(false);
+        setOdometryMetrics(m => ({
+          ...m,
+          activeFixType: 'GPS_RTK',
+          kalmanPositionDriftMm: 8
+        }));
+        const msg =
+          '🚇 Tunnel exited: Open-sky satellite lock restored.';
+        setStatusMessage(msg);
+      }
+      return next;
+    });
   };
 
   // Stop/Halt Autonomous Driving
@@ -996,10 +1113,10 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     const obsLng = carPosRef.current.lng + Math.sin(headingRad) * distMeters * metersToLng;
 
     const randomTypes: Array<{ type: MapObstacle['type']; labelBn: string; labelEn: string; icon: string; radius: number }> = [
-      { type: 'pedestrian', labelBn: 'হঠাৎ আসা পথচারী', labelEn: 'Sudden Pedestrian', icon: '🚶', radius: 6.0 },
-      { type: 'vehicle', labelBn: 'রাস্তায় স্থবির গাড়ি', labelEn: 'Blocked Car', icon: '🚗', radius: 8.0 },
-      { type: 'construction', labelBn: 'রাস্তা সংস্কার কাজ ও ব্যারিকেড', labelEn: 'Road Construction', icon: '🚧', radius: 9.5 },
-      { type: 'barrier', labelBn: 'ট্রাফিক ব্যারিকেড', labelEn: 'Traffic Barrier', icon: '🛑', radius: 7.0 }
+      { type: 'pedestrian', labelBn: 'Sudden Pedestrian', labelEn: 'Sudden Pedestrian', icon: '🚶', radius: 6.0 },
+      { type: 'vehicle', labelBn: 'Blocked Car', labelEn: 'Blocked Car', icon: '🚗', radius: 8.0 },
+      { type: 'construction', labelBn: 'Road Construction', labelEn: 'Road Construction', icon: '🚧', radius: 9.5 },
+      { type: 'barrier', labelBn: 'Traffic Barrier', labelEn: 'Traffic Barrier', icon: '🛑', radius: 7.0 }
     ];
     const picked = randomTypes[Math.floor(Math.random() * randomTypes.length)];
 
@@ -1018,11 +1135,9 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     setObstacles(prev => [...prev, newObstacle]);
 
     const msg =
-      language === 'bn'
-        ? `⚠️ নতুন বাধা সনাক্ত! সামনে ${newObstacle.labelBn} যুক্ত করা হয়েছে।`
-        : `⚠️ New obstacle ahead! ${newObstacle.labelEn} placed in path.`;
+      `⚠️ New obstacle ahead! ${newObstacle.labelEn} placed in path.`;
     setStatusMessage(msg);
-    if (voiceVoiceFeedback) speakPrompt(msg, language);
+    if (voiceVoiceFeedback) speakPrompt(msg, 'en');
   };
 
   // Clear all obstacles & traffic jams
@@ -1040,7 +1155,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     trafficJamRef.current = null;
     setJammedRoadSegment([]);
     setJamAvoidanceDetourActive(false);
-    const msg = language === 'bn' ? 'সব বাধা ও ট্রাফিক জ্যাম মুছে ফেলা হয়েছে। পথ এখন সম্পূর্ণ মুক্ত।' : 'All obstacles and traffic jams cleared. Roadway is clear.';
+    const msg = 'All obstacles and traffic jams cleared. Roadway is clear.';
     setStatusMessage(msg);
   };
 
@@ -1073,11 +1188,9 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     startDriving();
 
     const msg =
-      language === 'bn'
-        ? '⚡ বিকল্প ফাঁকা রাস্তা নিশ্চিত। গাড়ি আস্তে আস্তে মোড় নিয়ে গন্তব্যের দিকে এগিয়ে যাচ্ছে।'
-        : '⚡ Clear detour confirmed. Vehicle turning smoothly onto clear route toward destination.';
+      '⚡ Clear detour confirmed. Vehicle turning smoothly onto clear route toward destination.';
     setStatusMessage(msg);
-    if (voiceVoiceFeedback) speakPrompt(msg, language);
+    if (voiceVoiceFeedback) speakPrompt(msg, 'en');
   };
 
   // Map Click Handler (Destination selection OR Obstacle placement)
@@ -1092,7 +1205,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         lat: clickedLat,
         lng: clickedLng,
         type: 'barrier',
-        labelBn: 'কাস্টম ব্যারিকেড',
+        labelBn: 'Placed Barrier',
         labelEn: 'Placed Barrier',
         radiusMeters: 7.0,
         icon: '🛑',
@@ -1101,23 +1214,20 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
       setObstacles(prev => [...prev, newObs]);
       setPlacementMode(false);
       const msg =
-        language === 'bn'
-          ? 'ম্যাপে ব্যারিকেড স্থাপন করা হয়েছে। অটোনোমাস সিস্টেম সতর্ক।'
-          : 'Barrier placed on map. Autonomous system standing by.';
+        'Barrier placed on map. Autonomous system standing by.';
       setStatusMessage(msg);
     } else {
+      const snapped = ensureRouteAvoidsWater([{ lat: clickedLat, lng: clickedLng }])[0] || { lat: clickedLat, lng: clickedLng };
       const customDest = {
-        nameBn: `কাস্টম পিন (${clickedLat.toFixed(4)}, ${clickedLng.toFixed(4)})`,
-        nameEn: `Target Pin (${clickedLat.toFixed(4)}, ${clickedLng.toFixed(4)})`,
-        lat: clickedLat,
-        lng: clickedLng
+        nameBn: `Custom Road Pin`,
+        nameEn: `Target Road Pin (${snapped.lat.toFixed(4)}, ${snapped.lng.toFixed(4)})`,
+        lat: snapped.lat,
+        lng: snapped.lng
       };
       setDestination(customDest);
-      planRouteTo({ lat: clickedLat, lng: clickedLng });
+      planRouteTo({ lat: snapped.lat, lng: snapped.lng });
       const msg =
-        language === 'bn'
-          ? `ম্যাপে নতুন টার্গেট পিন সিলেক্ট করা হয়েছে। ড্রাইভ শুরু করতে 'গাড়ি চালান' চাপুন।`
-          : `New target pin selected on map. Click 'Start Vehicle' to drive.`;
+        `New target pin snapped to road network. Click 'Start Vehicle' to drive.`;
       setStatusMessage(msg);
     }
   };
@@ -1184,7 +1294,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           setNearestObstacle(closestObs);
           setNearestDistMeters(closestDist < 100 ? Math.round(closestDist * 10) / 10 : null);
 
-          // 1.5. 360° GEOFENCE PERIMETER DEFENSE (রোভারের ২ মিটারের মধ্যে অসৎ উদ্দেশ্যে এলে অ্যালার্ম ও ইঞ্জিন লক)
+          // 1.5. 360° GEOFENCE PERIMETER DEFENSE (Perimeter defense intruder alert)
           if (
             isPerimeterArmedRef.current &&
             !isBreachedRef.current &&
@@ -1195,7 +1305,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             return;
           }
 
-          // 2. PROACTIVE TRAFFIC JAM SCANNER (রাস্তায় জ্যাম থাকলে গাড়ি আগে থেকেই সেই রোড এড়িয়ে বিকল্প রাস্তায় মোড় নেবে)
+          // 2. PROACTIVE TRAFFIC JAM SCANNER (Proactive traffic jam bypass)
           if (trafficJamRef.current && trafficJamRef.current.active && !trafficJamRef.current.bypassed) {
             const distToJam = calculateDistanceMeters(carPosRef.current, {
               lat: trafficJamRef.current.lat,
@@ -1207,7 +1317,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             }
           }
 
-          // 3. ROAD TURN MANEUVERS SCANNER (মাঝে মাঝে ১ বা ২টি ক্ষেত্রে নির্দিষ্ট দিকে মোড় নেওয়া)
+          // 3. ROAD TURN MANEUVERS SCANNER (Waypoint turns)
           const turns = routeTurnsRef.current;
           let nextTurn: RouteTurnManeuver | null = null;
           let minTurnDist = Infinity;
@@ -1232,10 +1342,8 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               if (!announcedTurnsRef.current.has(nextTurn.id)) {
                 announcedTurnsRef.current.add(nextTurn.id);
                 const turnVoice =
-                  language === 'bn'
-                    ? `সামনে ${Math.round(minTurnDist)} মিটারে ${nextTurn.direction === 'LEFT' ? 'বামে' : 'ডানে'} মোড় নিন`
-                    : `In ${Math.round(minTurnDist)} meters, ${nextTurn.direction === 'LEFT' ? 'turn left' : 'turn right'}`;
-                if (voiceVoiceFeedback) speakPrompt(turnVoice, language);
+                  `In ${Math.round(minTurnDist)} meters, ${nextTurn.direction === 'LEFT' ? 'turn left' : 'turn right'}`;
+                if (voiceVoiceFeedback) speakPrompt(turnVoice, 'en');
               }
             } else {
               setBlinkingTurnSignal(null);
@@ -1252,7 +1360,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             setBlinkingTurnSignal(null);
           }
 
-          // 4. CRITICAL AUTO STOP EVALUATION (বাধা ৫.৫ মিটারের মধ্যে এলে গাড়ি গতি কমিয়ে নিরাপদে দাঁড়িয়ে যাবে)
+          // 4. CRITICAL AUTO STOP EVALUATION (Auto-stop when obstacle is within 5.5m)
           const criticalStopDistance = 5.5;
           if (autoStopEnabled && closestObs && closestDist <= criticalStopDistance) {
             setIsDriving(false);
@@ -1267,16 +1375,12 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             setThrottlePercent(0);
 
             const stopMsg =
-              language === 'bn'
-                ? `🛑 গতি কমিয়ে নিরাপদে গাড়ি দাঁড়িয়েছে! সামনে ${closestObs.labelBn} (${closestDist.toFixed(1)} মি.)।`
-                : `🛑 Speed reduced to safe halt! Hazard ahead: ${closestObs.labelEn} at ${closestDist.toFixed(1)}m.`;
+              `🛑 Speed reduced to safe halt! Hazard ahead: ${closestObs.labelEn} at ${closestDist.toFixed(1)}m.`;
             setStatusMessage(stopMsg);
             if (voiceVoiceFeedback) {
               speakPrompt(
-                language === 'bn'
-                  ? `সামনে বাধা। গাড়ি গতি কমিয়ে নিরাপদে দাঁড়িয়েছে।`
-                  : `Warning! Hazard ahead. Vehicle halted safely.`,
-                language
+                `Warning! Hazard ahead. Vehicle halted safely.`,
+                'en'
               );
             }
 
@@ -1289,7 +1393,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             return;
           }
 
-          // 5. AUTO PATH FINDER DYNAMIC DETOUR (বাধা একটু সামনে থাকতেই গতি কমিয়ে আস্তে আস্তে মোড় নিয়ে ফাঁকা রাস্তায় যাওয়া)
+          // 5. AUTO PATH FINDER DYNAMIC DETOUR (Auto detour around obstacle)
           if (
             autoPathFinderEnabled &&
             closestObs &&
@@ -1313,16 +1417,12 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               setAvoidanceDetourActive(true);
 
               const rerouteMsg =
-                language === 'bn'
-                  ? `⚡ গতি কমিয়ে আস্তে আস্তে মোড় নেওয়া হচ্ছে... বিকল্প ফাঁকা রাস্তা দিয়ে গন্তব্যের দিকে যাওয়া হচ্ছে!`
-                  : `⚡ Reducing speed and smoothly turning onto clear alternate road toward destination!`;
+                `⚡ Reducing speed and smoothly turning onto clear alternate road toward destination!`;
               setStatusMessage(rerouteMsg);
               if (voiceVoiceFeedback) {
                 speakPrompt(
-                  language === 'bn'
-                    ? `সামনে বাধা। গতি কমিয়ে আস্তে আস্তে মোড় নিয়ে ফাঁকা রাস্তা দিয়ে গন্তব্যে যাওয়া হচ্ছে।`
-                    : `Obstacle ahead. Reducing speed and smoothly turning onto clear road.`,
-                  language
+                  `Obstacle ahead. Reducing speed and smoothly turning onto clear road.`,
+                  'en'
                 );
               }
             }
@@ -1362,13 +1462,16 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           remainingMeters
         } = interpolatePositionAlongPath(path, cumulativeDists, travelledMetersRef.current);
 
+        // Strictly confine vehicle position to road area corridor
+        const clampedPos = clampToRoadCorridor(interpolatedPos, path);
+
         // Smooth angle lerp for vehicle chassis rotation
         const smoothlyTurnedHeading = smoothAngleLerp(carHeadingRef.current, targetHeading, 0.16);
 
         // Update Car Position & Heading smoothly
-        carPosRef.current = interpolatedPos;
+        carPosRef.current = clampedPos;
         carHeadingRef.current = smoothlyTurnedHeading;
-        setCarPosition(interpolatedPos);
+        setCarPosition(clampedPos);
         setCarHeading(smoothlyTurnedHeading);
         setDistanceRemainingMeters(Math.round(remainingMeters));
 
@@ -1393,6 +1496,31 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         setMotorPwmLeft(pwmL);
         setMotorPwmRight(pwmR);
 
+        // 5.5. SATELLITE-DENIED ODOMETRY & CELESTIAL DEAD-RECKONING TELEMETRY UPDATE
+        // 1 meter = approx 125 encoder ticks (wheel circumference: 20cm, 25 slots)
+        const deltaTicksL = Math.round(distanceStepMeters * (steer === 'LEFT' ? 95 : 125));
+        const deltaTicksR = Math.round(distanceStepMeters * (steer === 'RIGHT' ? 95 : 125));
+        const vxMm = Math.round(speedMps * 1000);
+        const vyMm = Math.round(headingDeflection * 12);
+
+        setOdometryMetrics(prev => {
+          const newTicksL = prev.wheelTicksLeft + deltaTicksL;
+          const newTicksR = prev.wheelTicksRight + deltaTicksR;
+          // Sub-centimeter cumulative drift modeling (drifts by ~0.1mm per meter when GPS is denied)
+          const addedDrift = isGpsDenied ? distanceStepMeters * 0.12 : -0.05;
+          const newDrift = Math.max(5, Math.min(32, prev.kalmanPositionDriftMm + addedDrift));
+          return {
+            ...prev,
+            wheelTicksLeft: newTicksL,
+            wheelTicksRight: newTicksR,
+            opticalFlowVx: vxMm,
+            opticalFlowVy: vyMm,
+            kalmanPositionDriftMm: Math.round(newDrift * 10) / 10,
+            opticalGroundConfidence: isTunnelActive ? 98 : 99,
+            wheelSlipPercent: activeSpeed > 20 ? 1.4 : 0.6
+          };
+        });
+
         // 6. DESTINATION ARRIVAL CHECK
         if (isEnd || travelledMetersRef.current >= totalPathLength) {
           setIsDriving(false);
@@ -1406,13 +1534,11 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           setDistanceRemainingMeters(0);
           setSpeedGovernorState('CRUISE');
 
-          const destName = language === 'bn' ? destination.nameBn : destination.nameEn;
+          const destName = destination.nameEn;
           const msg =
-            language === 'bn'
-              ? `অভিনন্দন! গাড়ি সফলভাবে ${destName} গন্তব্যে মসৃণভাবে পৌঁছে গেছে।`
-              : `Success! Autonomous vehicle arrived smoothly at ${destName}.`;
+            `Success! Autonomous vehicle arrived smoothly at ${destName}.`;
           setStatusMessage(msg);
-          if (voiceVoiceFeedback) speakPrompt(msg, language);
+          if (voiceVoiceFeedback) speakPrompt(msg, 'en');
           return;
         }
       }
@@ -1437,7 +1563,6 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     baseCruiseSpeed,
     avoidanceDetourActive,
     destination,
-    language,
     voiceVoiceFeedback
   ]);
 
@@ -1455,9 +1580,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         await (navigator as any).serial.requestPort();
         setSerialConnected(true);
         setStatusMessage(
-          language === 'bn'
-            ? 'ইউএসবি হার্ডওয়্যার (Arduino/ESP32) সংযুক্ত হয়েছে। মোটর কমান্ড সরাসরি ট্রান্সমিট হচ্ছে।'
-            : 'USB Hardware (Arduino/ESP32) connected! Motor PWM streaming.'
+          'USB Hardware (Arduino/ESP32) connected! Motor PWM streaming.'
         );
       } catch (err) {
         setSerialConnected(prev => !prev);
@@ -1503,9 +1626,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 }}
                 onFocus={() => setShowSuggestions(true)}
                 placeholder={
-                  language === 'bn'
-                    ? 'গন্তব্য খুঁজুন বা মুখে বলুন (যেমন: ধানমন্ডি)...'
-                    : 'Search destination or speak...'
+                  'Search destination or speak...'
                 }
                 className={`w-full pl-8.5 pr-22 py-2 text-xs sm:text-sm font-medium rounded-xl border-2 transition-all focus:outline-hidden shadow-inner ${
                   isLight
@@ -1538,17 +1659,17 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                       ? 'bg-rose-600 text-white animate-pulse ring-2 ring-rose-400 shadow-[0_2px_0_#9f1239]'
                       : 'bg-gradient-to-r from-rose-600 via-fuchsia-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-[0_2px_0_#9f1239]'
                   }`}
-                  title={language === 'bn' ? 'মুখে বলুন কোথায় যেতে চান' : 'Speak destination'}
+                  title={'Speak destination'}
                 >
                   {isListening ? (
                     <>
                       <MicOff className="w-3.5 h-3.5 animate-bounce" />
-                      <span className="font-bengali font-black">{language === 'bn' ? 'শুনছি...' : 'Rec...'}</span>
+                      <span className="font-bengali font-black">{'Rec...'}</span>
                     </>
                   ) : (
                     <>
                       <Mic className="w-3.5 h-3.5" />
-                      <span className="font-bengali font-black">{language === 'bn' ? 'ভয়েস' : 'Voice'}</span>
+                      <span className="font-bengali font-black">{'Voice'}</span>
                     </>
                   )}
                 </button>
@@ -1578,10 +1699,10 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                   >
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
-                      <span className="font-bengali font-bold">{language === 'bn' ? preset.nameBn : preset.nameEn}</span>
+                      <span className="font-bengali font-bold">{preset.nameEn}</span>
                     </div>
                     <span className="text-xs text-cyan-700 dark:text-cyan-300 font-black flex items-center gap-1 font-bengali">
-                      <span>{language === 'bn' ? 'ড্রাইভ' : 'Go'}</span>
+                      <span>{'Go'}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </span>
                   </button>
@@ -1602,7 +1723,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black text-white bg-gradient-to-b from-rose-600 to-rose-800 border-t border-rose-300 shadow-[0_3px_0_#881337] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer font-bengali"
               >
                 <Square className="w-4 h-4 fill-white" />
-                <span>{language === 'bn' ? 'গাড়ি থামান' : 'Halt'}</span>
+                <span>{'Halt'}</span>
               </button>
             ) : (
               <button
@@ -1611,7 +1732,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black text-white bg-gradient-to-b from-emerald-500 to-emerald-700 border-t border-emerald-300 shadow-[0_3px_0_#064e3b] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer font-bengali"
               >
                 <Play className="w-4 h-4 fill-white" />
-                <span>{language === 'bn' ? 'গাড়ি চালান' : 'Start Drive'}</span>
+                <span>{'Start Drive'}</span>
               </button>
             )}
 
@@ -1625,16 +1746,26 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                     ? 'bg-slate-100 border-slate-300 text-slate-700 hover:text-slate-950'
                     : 'bg-slate-800 border-slate-700 text-slate-200 hover:text-white'
               }`}
-              title={voiceVoiceFeedback ? 'ভয়েস প্রম্পট অন' : 'ভয়েস প্রম্পট অফ'}
+              title={voiceVoiceFeedback ? 'Voice Prompts: ON' : 'Voice Prompts: OFF'}
             >
               {voiceVoiceFeedback ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+
+            {/* World-First R&D Breakthroughs Button */}
+            <button
+              onClick={() => setShowRdModal(true)}
+              className="px-3 py-1.5 rounded-xl border-2 border-purple-400 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-[0_2px_0_#581c87] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer flex items-center gap-1.5"
+              title="Next-Gen R&D Features"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+              <span className="hidden sm:inline">World-First R&D</span>
             </button>
 
             {/* Quick Guide */}
             <button
               onClick={() => setShowHelpModal(true)}
               className="p-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 hover:bg-cyan-500 text-white text-xs shadow-[0_2px_0_#0e7490] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
-              title="সহজ নির্দেশিকা"
+              title="Quick Guide"
             >
               <HelpCircle className="w-4 h-4 text-white" />
             </button>
@@ -1685,7 +1816,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-base">🛑</span>
             <span className="font-bold font-bengali">
-              {language === 'bn' ? `জরুরি অটো স্টপ! সামনে ${nearestObstacle.labelBn} (${nearestDistMeters}m)` : `Auto Stopped at ${nearestObstacle.labelEn}`}
+              {`Auto Stopped at ${nearestObstacle.labelEn}`}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1693,7 +1824,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               onClick={handleRerouteAroundObstacle}
               className="px-2.5 py-1 rounded-lg bg-white text-rose-700 font-bold text-[11px] shadow-sm active:scale-95 cursor-pointer font-bengali"
             >
-              {language === 'bn' ? 'বিকল্প পথ' : 'Bypass'}
+              {'Bypass'}
             </button>
             <button
               onClick={() => {
@@ -1702,7 +1833,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               }}
               className="px-2.5 py-1 rounded-lg bg-rose-800 text-white font-bold text-[11px] border border-rose-400 cursor-pointer font-bengali"
             >
-              {language === 'bn' ? 'মুছে এগোন' : 'Clear'}
+              {'Clear'}
             </button>
           </div>
         </div>
@@ -1723,7 +1854,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             <div className="flex items-center justify-between text-[11px] font-bold pb-1.5 mb-2 font-bengali border-b border-cyan-500/30">
               <span className="flex items-center gap-1.5 text-cyan-400 font-extrabold">
                 <Gauge className="w-3.5 h-3.5 text-cyan-400" />
-                <span>৩ডি স্পিডোমিটার ও জাইরো কম্পাস</span>
+                <span>3D Speedometer & Gyro Compass</span>
               </span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black border ${
                 speedGovernorState === 'AUTO_STOP'
@@ -1819,7 +1950,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             <div className="mt-2 pt-2 border-t border-cyan-500/30 flex items-center justify-between text-[11px] font-bengali">
               <div className="flex items-center gap-1.5 truncate max-w-[150px]">
                 <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 animate-bounce" />
-                <span className="truncate font-black text-cyan-200">{destination.nameBn}</span>
+                <span className="truncate font-black text-cyan-200">{destination.nameEn}</span>
               </div>
               <div className="flex items-center gap-2 font-mono text-emerald-400 font-black">
                 <span>{distanceRemainingMeters > 1000 ? `${(distanceRemainingMeters / 1000).toFixed(2)}km` : `${Math.round(distanceRemainingMeters)}m`}</span>
@@ -1844,7 +1975,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             }`}
           >
             <div className="flex items-center justify-between text-[11px] font-bold mb-2 font-bengali text-teal-300">
-              <span className="font-extrabold text-teal-300">মোটর ড্রাইভ ও ডিফারেনশিয়াল স্টিয়ারিং</span>
+              <span className="font-extrabold text-teal-300">Motor Drive & Differential Steering</span>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-black font-bengali border ${
                   steeringMode === 'LEFT' || steeringMode === 'RIGHT'
@@ -1854,7 +1985,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                       : 'bg-emerald-500/25 text-emerald-300 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
                 }`}
               >
-                {steeringMode === 'LEFT' ? '⬅ বামে মোড়' : steeringMode === 'RIGHT' ? '➡ ডানে মোড়' : steeringMode === 'STOP' ? '🛑 ব্রেক' : '⬆ সোজা পথ'}
+                {steeringMode === 'LEFT' ? '⬅ Left Turn' : steeringMode === 'RIGHT' ? '➡ Right Turn' : steeringMode === 'STOP' ? '🛑 Brake' : '⬆ Forward'}
               </span>
             </div>
 
@@ -1862,7 +1993,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               {/* Left Motor Card - Neon Cyan */}
               <div className="p-2 rounded-xl bg-[#041420] border border-cyan-500/40 shadow-inner">
                 <div className="flex justify-between font-bengali">
-                  <span className="text-cyan-300 font-bold">বাম মোটর (L):</span>
+                  <span className="text-cyan-300 font-bold">Left Motor (L):</span>
                   <span className="font-black text-cyan-300 font-mono drop-shadow-[0_0_6px_rgba(6,182,212,0.8)]">{motorPwmLeft} PWM</span>
                 </div>
                 <div className="w-full bg-[#020b12] rounded-full h-2 mt-1.5 overflow-hidden p-0.5 border border-cyan-500/30">
@@ -1876,7 +2007,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               {/* Right Motor Card - Neon Purple */}
               <div className="p-2 rounded-xl bg-[#140a24] border border-purple-500/40 shadow-inner">
                 <div className="flex justify-between font-bengali">
-                  <span className="text-purple-300 font-bold">ডান মোটর (R):</span>
+                  <span className="text-purple-300 font-bold">Right Motor (R):</span>
                   <span className="font-black text-purple-300 font-mono drop-shadow-[0_0_6px_rgba(168,85,247,0.8)]">{motorPwmRight} PWM</span>
                 </div>
                 <div className="w-full bg-[#0d041a] rounded-full h-2 mt-1.5 overflow-hidden p-0.5 border border-purple-500/30">
@@ -1900,7 +2031,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             <div className="flex items-center justify-between text-[11px] font-bold mb-2 font-bengali">
               <span className="flex items-center gap-1.5 text-emerald-300 font-extrabold">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>৩৬০° লিডার ও বাধা স্ক্যানার</span>
+                <span>360° LiDAR & Obstacle Scanner</span>
               </span>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-black font-bengali border ${
@@ -1911,13 +2042,13 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                       : 'bg-amber-500/25 text-amber-300 border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
                 }`}
               >
-                {nearestDistMeters === null ? 'নিরাপদ (Clear)' : nearestDistMeters < 6 ? 'বিপজ্জনক!' : 'সতর্কতা'}
+                {nearestDistMeters === null ? 'Clear' : nearestDistMeters < 6 ? 'Hazard!' : 'Caution'}
               </span>
             </div>
 
             <div className="flex items-center justify-between p-2 rounded-xl bg-[#04130d] border border-emerald-500/40 shadow-inner">
               <div>
-                <span className="text-[10px] text-emerald-300/80 font-bengali">নিকটবর্তী দূরত্ব:</span>
+                <span className="text-[10px] text-emerald-300/80 font-bengali">Nearest Dist:</span>
                 <div className="flex items-baseline gap-1.5">
                   <span
                     className={`text-lg font-black font-mono drop-shadow-md ${
@@ -1931,21 +2062,21 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                     {nearestDistMeters !== null ? `${nearestDistMeters}m` : '25m+'}
                   </span>
                   <span className="text-[10px] text-emerald-300 font-bengali font-bold">
-                    ({nearestObstacle ? nearestObstacle.labelBn : 'ফাঁকা'})
+                    ({nearestObstacle ? nearestObstacle.labelEn : 'Clear'})
                   </span>
                 </div>
               </div>
 
               <div className="text-right">
-                <span className="text-[10px] text-emerald-300/80 font-bengali">পাথ স্ট্যাটাস:</span>
+                <span className="text-[10px] text-emerald-300/80 font-bengali">Path Status:</span>
                 <div className="text-[11px] font-black font-bengali text-emerald-300">
-                  {avoidanceDetourActive ? 'স্বয়ংক্রিয় বাইপাস অন' : 'সোজা ক্রুজ রুট'}
+                  {avoidanceDetourActive ? 'Detour Active' : 'Cruise Route'}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* PANEL 4: Tactile 3D Action Buttons (Vibrant Multi-Color Action Console) */}
+          {/* PANEL 4: Autonomous Background AI Perception & Safety Status */}
           <div
             className={`p-2.5 rounded-2xl border-2 transition-all ${
               isLight
@@ -1953,38 +2084,22 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 : 'bg-gradient-to-br from-[#160c28] via-[#241242] to-[#0f071c] border-purple-500/40 text-slate-100 shadow-[0_4px_25px_rgba(168,85,247,0.2)]'
             }`}
           >
-            <div className="text-[11px] font-bold text-purple-300 mb-2 font-bengali flex items-center justify-between">
-              <span className="font-extrabold">ট্যাকটিক্যাল অটোনোমাস অ্যাকশন</span>
-              <span className="font-mono font-bold px-2 py-0.5 rounded-full bg-purple-500/25 border border-purple-400/50 text-purple-200">
-                {obstacles.filter(o => o.active).length}টি বাধা
+            <div className="text-[11px] font-bold text-purple-300 mb-1.5 font-bengali flex items-center justify-between">
+              <span className="font-extrabold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                Background AI Perception Active
+              </span>
+              <span className="font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/25 border border-emerald-400/50 text-emerald-300 text-[10px]">
+                Always On
               </span>
             </div>
 
-            {/* Grid of 3D Tactile Action Buttons in Radiant Colors */}
+            <div className="text-[10px] text-purple-200/90 leading-relaxed font-bengali mb-2">
+              Autonomous hazard detection, traffic jam bypass, and water body lake avoidance are running continuously in the background to ensure safe routing.
+            </div>
+
+            {/* Quick Map Pin & Clear controls */}
             <div className="grid grid-cols-2 gap-2 font-bengali">
-              {/* Button 1: Amber 3D Drop Sudden Obstacle */}
-              <button
-                id="btn-drop-sudden-obs"
-                onClick={handleDropSuddenObstacle}
-                className="px-2.5 py-2 rounded-xl text-xs font-black text-slate-950 bg-gradient-to-b from-amber-300 via-amber-400 to-orange-500 border-t border-amber-100 shadow-[0_3px_0_#9a3412,0_0_15px_rgba(245,158,11,0.5)] hover:shadow-[0_1px_0_#9a3412] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                title="গাড়ির সামনে আকস্মিক বাধা ফেলে অটো স্টপ পরীক্ষা করুন"
-              >
-                <AlertTriangle className="w-4 h-4 text-slate-950" />
-                <span>বাধা ফেলুন</span>
-              </button>
-
-              {/* Button 2: Rose 3D Simulate Traffic Jam */}
-              <button
-                id="btn-simulate-traffic-jam"
-                onClick={handleSimulateTrafficJamAhead}
-                className="px-2.5 py-2 rounded-xl text-xs font-black text-white bg-gradient-to-b from-rose-500 via-red-600 to-rose-800 border-t border-rose-300 shadow-[0_3px_0_#881337,0_0_15px_rgba(244,63,94,0.5)] hover:shadow-[0_1px_0_#881337] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                title="সামনে ট্রাফিক জ্যাম ফেলে আগে থেকেই বাইপাস মোড় পরীক্ষা করুন"
-              >
-                <TrafficCone className="w-4 h-4 text-white" />
-                <span>জ্যাম ফেলুন</span>
-              </button>
-
-              {/* Button 3: Vibrant Violet 3D Click to Place */}
               <button
                 onClick={() => setPlacementMode(prev => !prev)}
                 className={`px-2.5 py-2 rounded-xl text-xs font-black border-t transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
@@ -1994,24 +2109,23 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 }`}
               >
                 <Plus className="w-4 h-4" />
-                <span>{placementMode ? 'ম্যাপে ক্লিক...' : 'ম্যাপে বাধা'}</span>
+                <span>{placementMode ? 'Click Map...' : 'Place Pin'}</span>
               </button>
 
-              {/* Button 4: Vibrant Cyan/Blue 3D Clear All */}
               <button
                 onClick={handleClearAllObstacles}
                 className="px-2.5 py-2 rounded-xl text-xs font-black bg-gradient-to-b from-cyan-500 via-sky-600 to-blue-700 text-white border-t border-cyan-200 shadow-[0_3px_0_#1d4ed8,0_0_15px_rgba(6,182,212,0.5)] hover:shadow-[0_1px_0_#1d4ed8] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                title="সব বাধা মুছে ফেলুন"
+                title="Clear obstacles"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>সব মুছুন</span>
+                <span>Clear</span>
               </button>
             </div>
 
             {/* Cruise Speed Slider & Hardware Sync */}
             <div className="mt-2.5 pt-2 border-t border-purple-500/30 flex items-center justify-between gap-2 text-[11px]">
               <div className="flex items-center gap-1.5 font-bengali">
-                <span className="text-purple-300 font-bold">স্পিড:</span>
+                <span className="text-purple-300 font-bold">Speed:</span>
                 <input
                   type="range"
                   min="12"
@@ -2033,14 +2147,13 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 }`}
               >
                 <Cpu className="w-3.5 h-3.5" />
-                <span>{serialConnected ? 'HW সংযুক্ত' : 'USB HW'}</span>
+                <span>{serialConnected ? 'HW Linked' : 'USB HW'}</span>
               </button>
             </div>
           </div>
 
           {/* PANEL 5: 360° Perimeter Defense & Self-Righting Roll-Over Recovery Module */}
           <UGVDefensiveSafetyModule
-            language={language}
             theme={theme}
             isPerimeterArmed={isPerimeterArmed}
             onTogglePerimeterArm={() => {
@@ -2078,6 +2191,18 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             onExecuteSelfRighting={handleExecuteSelfRighting}
             autoSelfRightEnabled={autoSelfRightEnabled}
             onToggleAutoSelfRight={() => setAutoSelfRightEnabled(prev => !prev)}
+          />
+
+          {/* PANEL 6: Satellite-Denied Navigation (Wheel Encoders, Optical Flow, Celestial Star Tracker) */}
+          <CelestialOdometryPanel
+            theme={theme}
+            isGpsDenied={isGpsDenied}
+            onToggleGpsDenied={handleToggleGpsDenied}
+            odometry={odometryMetrics}
+            carHeading={carHeading}
+            stars={celestialStars}
+            isTunnelActive={isTunnelActive}
+            onSimulateTunnelMode={handleSimulateTunnelMode}
           />
         </div>
 
@@ -2135,6 +2260,38 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               />
             )}
 
+            {/* Water Body / Lake Segment - Blue Dashed Polyline Avoided */}
+            {waterSegment.length > 0 && (
+              <MapPolyline
+                path={waterSegment}
+                color="#3b82f6"
+                weight={7}
+                opacity={0.88}
+                dashed={true}
+              />
+            )}
+
+            {/* Water Body / Lake Hazard Zone Marker */}
+            {waterBodyZone && waterBodyZone.active && (
+              <AdvancedMarker
+                position={{ lat: waterBodyZone.lat, lng: waterBodyZone.lng }}
+                title={waterBodyZone.nameEn}
+              >
+                <div className="relative flex flex-col items-center group cursor-pointer -translate-y-2">
+                  <div className="absolute rounded-full border-2 border-blue-400 bg-blue-500/30 animate-ping w-20 h-20 -top-4"></div>
+                  <div className="relative z-10 px-3 py-1.5 rounded-2xl bg-gradient-to-r from-blue-950 via-cyan-900 to-blue-950 border-2 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.7)] flex items-center gap-1.5 text-xs font-bold text-blue-100">
+                    <span className="text-base">🌊</span>
+                    <span className="font-bengali text-[11px] font-black whitespace-nowrap drop-shadow">
+                      {waterBodyZone.nameEn}
+                    </span>
+                  </div>
+                  <div className="mt-1 bg-blue-900/95 text-blue-200 border border-blue-400 px-2 py-0.5 rounded-md text-[9px] font-mono whitespace-nowrap shadow-[0_0_10px_rgba(59,130,246,0.6)] animate-pulse">
+                    {'🌊 Water Body (Auto Avoided)'}
+                  </div>
+                </div>
+              </AdvancedMarker>
+            )}
+
             {/* Active Collision-Free Path Polyline (Vibrant Emerald / Cyan Glow) */}
             {routeCoordinates.length > 0 && (
               <MapPolyline
@@ -2149,23 +2306,23 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             {trafficJamZone && trafficJamZone.active && (
               <AdvancedMarker
                 position={{ lat: trafficJamZone.lat, lng: trafficJamZone.lng }}
-                title={language === 'bn' ? trafficJamZone.roadNameBn : trafficJamZone.roadNameEn}
+                title={trafficJamZone.roadNameEn}
               >
                 <div className="relative flex flex-col items-center group cursor-pointer -translate-y-2">
                   <div className="absolute rounded-full border-2 border-rose-500 bg-rose-500/30 animate-ping w-16 h-16 -top-3"></div>
                   <div className="relative z-10 px-3 py-1.5 rounded-2xl bg-gradient-to-r from-rose-950 via-red-900 to-rose-950 border-2 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.6)] flex items-center gap-1.5 text-xs font-bold text-rose-100">
                     <span className="text-base">🚗🚙🚕</span>
                     <span className="font-bengali text-[11px] font-black whitespace-nowrap drop-shadow">
-                      {language === 'bn' ? 'তীব্র জ্যাম' : 'Traffic Jam'}
+                      {'Traffic Jam'}
                     </span>
                   </div>
                   {trafficJamZone.bypassed ? (
                     <div className="mt-1 bg-emerald-900/95 text-emerald-200 border border-emerald-400 px-2 py-0.5 rounded-md text-[9px] font-mono whitespace-nowrap shadow-[0_0_8px_rgba(16,185,129,0.5)]">
-                      {language === 'bn' ? '✓ আগে থেকেই এড়ানো হয়েছে' : '✓ Proactively Bypassed'}
+                      {'✓ Proactively Bypassed'}
                     </div>
                   ) : (
                     <div className="mt-1 bg-rose-900/95 text-rose-100 border border-rose-400 px-2 py-0.5 rounded-md text-[9px] font-mono whitespace-nowrap shadow-[0_0_10px_rgba(244,63,94,0.7)] animate-pulse">
-                      {language === 'bn' ? '⚠️ সামনে জ্যাম' : '⚠️ Jam Ahead'}
+                      {'⚠️ Jam Ahead'}
                     </div>
                   )}
                 </div>
@@ -2177,7 +2334,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               <AdvancedMarker
                 key={turn.id}
                 position={turn.location}
-                title={language === 'bn' ? turn.instructionBn : turn.instructionEn}
+                title={turn.instructionEn}
               >
                 <div className="flex flex-col items-center cursor-pointer -translate-y-2">
                   <div className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-950 border-2 border-indigo-400 text-indigo-100 text-[10px] font-black shadow-[0_0_12px_rgba(99,102,241,0.5)] flex items-center gap-1.5 font-bengali whitespace-nowrap">
@@ -2188,8 +2345,8 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                     )}
                     <span>
                       {turn.direction === 'LEFT'
-                        ? (language === 'bn' ? 'বামে মোড়' : 'Left Turn')
-                        : (language === 'bn' ? 'ডানে মোড়' : 'Right Turn')}
+                        ? ('Left Turn')
+                        : ('Right Turn')}
                     </span>
                   </div>
                 </div>
@@ -2199,12 +2356,12 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             {/* Target Destination Marker */}
             <AdvancedMarker
               position={{ lat: destination.lat, lng: destination.lng }}
-              title={language === 'bn' ? destination.nameBn : destination.nameEn}
+              title={destination.nameEn}
             >
               <div className="flex flex-col items-center group cursor-pointer -translate-y-4">
                 <div className="bg-gradient-to-r from-rose-500 via-red-500 to-pink-600 text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-[0_0_18px_rgba(244,63,94,0.8)] border-2 border-white flex items-center gap-1.5 whitespace-nowrap animate-bounce">
                   <MapPin className="w-4 h-4 fill-white" />
-                  <span>{language === 'bn' ? destination.nameBn : destination.nameEn}</span>
+                  <span>{destination.nameEn}</span>
                 </div>
                 <div className="w-3.5 h-3.5 bg-rose-600 rotate-45 -mt-1.5 border border-white shadow-md"></div>
               </div>
@@ -2217,7 +2374,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 <AdvancedMarker
                   key={obs.id}
                   position={{ lat: obs.lat, lng: obs.lng }}
-                  title={language === 'bn' ? obs.labelBn : obs.labelEn}
+                  title={obs.labelEn}
                 >
                   <div className="relative flex flex-col items-center cursor-pointer group">
                     {/* Obstacle Hazard Buffer Halo */}
@@ -2240,14 +2397,14 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                     >
                       <span className="text-lg">{obs.icon}</span>
                       <span className="text-[10px] hidden group-hover:inline whitespace-nowrap font-bengali">
-                        {language === 'bn' ? obs.labelBn : obs.labelEn}
+                        {obs.labelEn}
                       </span>
                     </div>
 
                     {/* Distance indicator badge */}
                     {nearestDistMeters !== null && isNearest && (
                       <div className="absolute -bottom-6 bg-rose-950/95 text-rose-200 border border-rose-400 px-2 py-0.5 rounded-md text-[9px] font-mono font-bold whitespace-nowrap shadow-[0_0_10px_rgba(244,63,94,0.7)]">
-                        {nearestDistMeters}m দূরত্ব
+                        {nearestDistMeters}m dist
                       </div>
                     )}
                   </div>
@@ -2388,7 +2545,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                       : autoStopTriggered
                         ? '🛑 AUTO STOP'
                         : blinkingTurnSignal
-                          ? (blinkingTurnSignal === 'LEFT' ? '⬅️ বামে মোড় সিগন্যাল' : '➡️ ডানে মোড় সিগন্যাল')
+                          ? (blinkingTurnSignal === 'LEFT' ? '⬅️ LEFT TURN SIGNAL' : '➡️ RIGHT TURN SIGNAL')
                           : speedKmh > 0
                             ? `${speedKmh.toFixed(1)} km/h • ${carHeading.toFixed(0)}°`
                             : 'UGV READY'}
@@ -2406,21 +2563,17 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               <ShieldAlert className="w-5 h-5 text-rose-300 animate-spin shrink-0" />
               <div className="flex flex-col">
                 <span className="text-[13px] font-black text-rose-100">
-                  {language === 'bn'
-                    ? `🚨 পেরিমিটার অনুপ্রবেশ! রোভারের ${breachDistanceMeters?.toFixed(1) || '২.০'} মিটারে অনুপ্রবেশকারী শনাক্ত!`
-                    : `🚨 PERIMETER BREACH! Intruder detected at ${breachDistanceMeters?.toFixed(1) || '2.0'}m!`}
+                  {`🚨 PERIMETER BREACH! Intruder detected at ${breachDistanceMeters?.toFixed(1) || '2.0'}m!`}
                 </span>
                 <span className="text-[10px] text-rose-200">
-                  {language === 'bn'
-                    ? 'ইঞ্জিন লক করা হয়েছে • হাই-পিচ অ্যালার্ম ও ফ্ল্যাশার চলছে'
-                    : 'Engine Locked • High-Pitch Siren & Perimeter Strobes Active'}
+                  {'Engine Locked • High-Pitch Siren & Perimeter Strobes Active'}
                 </span>
               </div>
               <button
                 onClick={handleClearBreach}
                 className="ml-1 px-3 py-1 rounded-xl bg-white text-rose-950 font-black text-[11px] shadow-lg hover:bg-rose-100 cursor-pointer pointer-events-auto"
               >
-                {language === 'bn' ? 'আনলক' : 'Unlock'}
+                {'Unlock'}
               </button>
             </div>
           </>
@@ -2432,14 +2585,12 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             <RotateCw className={`w-5 h-5 text-amber-300 shrink-0 ${isSelfRightingActive ? 'animate-spin' : ''}`} />
             <div className="flex flex-col">
               <span className="text-[13px] font-black text-amber-100">
-                {language === 'bn'
-                  ? `🚨 TUMBLE ALERT: গাড়ি উল্টে গেছে (${Math.round(rollAngleDeg)}°)!`
-                  : `🚨 TUMBLE ALERT: UGV Inverted (${Math.round(rollAngleDeg)}°)!`}
+                {`🚨 TUMBLE ALERT: UGV Inverted (${Math.round(rollAngleDeg)}°)!`}
               </span>
               <span className="text-[10px] text-amber-200">
                 {isSelfRightingActive
                   ? selfRightingPhase
-                  : (language === 'bn' ? 'রিভার্স মোটর পালস অ্যালগরিদম প্রস্তুত' : 'Reverse motor pulse algorithm ready')}
+                  : ('Reverse motor pulse algorithm ready')}
               </span>
             </div>
             <button
@@ -2448,7 +2599,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               className="ml-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-black text-[11px] shadow-lg hover:brightness-110 cursor-pointer pointer-events-auto flex items-center gap-1"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSelfRightingActive ? 'animate-spin' : ''}`} />
-              <span>{language === 'bn' ? 'সোজা করুন' : 'Self-Right'}</span>
+              <span>{'Self-Right'}</span>
             </button>
           </div>
         )}
@@ -2463,15 +2614,30 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             )}
             <div className="flex flex-col">
               <span className="text-[13px] font-black">
-                {language === 'bn'
-                  ? `সামনে ${distToNextTurnMeters} মিটারে ${activeTurn.direction === 'LEFT' ? 'বামে' : 'ডানে'} মোড় নিন`
-                  : `In ${distToNextTurnMeters}m, turn ${activeTurn.direction === 'LEFT' ? 'left' : 'right'}`}
+                {`In ${distToNextTurnMeters}m, turn ${activeTurn.direction === 'LEFT' ? 'left' : 'right'}`}
               </span>
               <span className="text-[10px] text-indigo-200 font-medium">
-                {language === 'bn' ? activeTurn.streetNameBn : activeTurn.streetNameEn}
+                {activeTurn.streetNameEn}
               </span>
             </div>
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping ml-1"></span>
+          </div>
+        )}
+
+        {/* Floating GPS Denied / Celestial Star Tracker Banner */}
+        {isGpsDenied && !isBreached && !isTumbled && (
+          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-20 px-4 py-2 rounded-2xl bg-gradient-to-r from-cyan-950 via-blue-900 to-slate-950 text-cyan-100 border-2 border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.7)] backdrop-blur-md flex items-center gap-2.5 font-bengali text-xs font-bold pointer-events-none animate-pulse">
+            <Sparkles className="w-4.5 h-4.5 text-cyan-300 animate-spin shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-[12px] font-black text-cyan-100">
+                {`📡 Satellite-Denied Dead-Reckoning Active (Drift: ±${(odometryMetrics.kalmanPositionDriftMm / 10).toFixed(1)}cm)`}
+              </span>
+              <span className="text-[10px] text-cyan-300 font-mono">
+                {isTunnelActive
+                  ? ('🚇 Underground Tunnel • Ground Optical Flow & Wheel Ticks')
+                  : ('✨ Celestial Star Tracker • 4 Stars Locked • Sub-Centimeter Accuracy')}
+              </span>
+            </div>
           </div>
         )}
 
@@ -2480,9 +2646,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 px-4 py-1.5 rounded-2xl bg-gradient-to-r from-emerald-950 via-teal-900 to-emerald-950 text-emerald-100 border-2 border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.6)] backdrop-blur-md flex items-center gap-2 font-bengali text-xs font-bold pointer-events-none">
             <Route className="w-4 h-4 text-emerald-300 shrink-0" />
             <span>
-              {language === 'bn'
-                ? '🚨 আগাম জ্যাম পরিহার: গাড়ি আগে থেকেই বিকল্প ফাঁকা রাস্তায় মোড় নিয়ে জ্যাম এড়িয়ে চলেছে'
-                : '🚨 Proactive Jam Bypass: Vehicle turned onto alternate clear street ahead of time'}
+              {'🚨 Proactive Jam Bypass: Vehicle turned onto alternate clear street ahead of time'}
             </span>
           </div>
         )}
@@ -2503,20 +2667,25 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             <Radio className={`w-4 h-4 ${isDriving ? 'text-emerald-300 animate-spin' : 'text-cyan-300'}`} />
             <span className="font-bengali">
               {autoStopTriggered
-                ? (language === 'bn' ? 'অটো স্টপ কার্যকর (বাধা সন্নিকটে)' : 'Auto Stop Engaged')
+                ? ('Auto Stop Engaged')
                 : isDriving
                   ? avoidanceDetourActive
-                    ? (language === 'bn' ? 'বিকল্প নিরাপদ রুটে ড্রাইভ চলছে' : 'Driving Bypass Route')
-                    : (language === 'bn' ? `গাড়ি চলছে: ${destination.nameBn}` : `Navigating: ${destination.nameEn}`)
+                    ? ('Driving Bypass Route')
+                    : (`Navigating: ${destination.nameEn}`)
                   : hasArrived
-                    ? (language === 'bn' ? 'গন্তব্যে পৌঁছে গেছে' : 'Arrived at Target')
-                    : (language === 'bn' ? 'গাড়ি প্রস্তুত (Standby)' : 'Standby')}
+                    ? ('Arrived at Target')
+                    : ('Standby')}
             </span>
           </div>
 
           <div className="bg-[#050c1b]/90 backdrop-blur-md border border-cyan-500/50 text-cyan-200 px-3 py-1 rounded-xl text-[10px] font-mono flex items-center gap-2.5 shadow-md">
-            <span>GPS: {carPosition.lat.toFixed(4)}N, {carPosition.lng.toFixed(4)}E</span>
-            <span>হেডিং: {carHeading.toFixed(0)}°</span>
+            <span>
+              {isGpsDenied ? '📡 VIO/DR' : '🛰️ GPS'}: {carPosition.lat.toFixed(4)}N, {carPosition.lng.toFixed(4)}E
+            </span>
+            <span>Heading: {carHeading.toFixed(0)}°</span>
+            <span className={isGpsDenied ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}>
+              {isGpsDenied ? `±${(odometryMetrics.kalmanPositionDriftMm / 10).toFixed(1)}cm` : 'RTK 1cm'}
+            </span>
             <span className={is3DView ? 'text-emerald-400 font-black' : 'text-cyan-400'}>
               {is3DView ? `3D (${cameraTilt}°)` : '2D'}
             </span>
@@ -2532,13 +2701,9 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               setIs3DView(prev => {
                 const next = !prev;
                 setStatusMessage(
-                  language === 'bn'
-                    ? next
-                      ? '🎥 ৩ডি ভিউ (3D Perspective) সক্রিয় করা হয়েছে'
-                      : '🗺️ সাধারণ ২ডি ভিউ (Top-Down 2D) সক্রিয় করা হয়েছে'
-                    : next
-                      ? '🎥 3D Perspective View Activated'
-                      : '🗺️ 2D Top-Down View Activated'
+                  next
+                    ? '🎥 3D Perspective View Activated'
+                    : '🗺️ 2D Top-Down View Activated'
                 );
                 return next;
               });
@@ -2548,11 +2713,11 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 ? 'bg-gradient-to-b from-emerald-400 via-teal-500 to-cyan-600 text-slate-950 border-emerald-200 shadow-[0_3px_0_#065f46,0_0_15px_rgba(16,185,129,0.5)] hover:shadow-[0_1px_0_#065f46] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none'
                 : 'bg-gradient-to-b from-slate-800 to-slate-900 text-slate-200 border-slate-700 shadow-[0_3px_0_#0f172a] hover:translate-y-[2px] active:translate-y-[3px]'
             }`}
-            title="3D / 2D ম্যাপ ভিউ টগল করুন"
+            title="Toggle 3D / 2D Map View"
           >
             <Box className="w-4 h-4 text-slate-950" />
             <span className="font-bengali font-black">
-              {is3DView ? '3D ভিউ' : '2D ফ্ল্যাট'}
+              {is3DView ? '3D View' : '2D Flat'}
             </span>
           </button>
 
@@ -2560,18 +2725,16 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           {is3DView && (
             <div className="hidden sm:flex items-center gap-1 bg-[#050c1b]/95 border-2 border-indigo-500/50 rounded-xl p-1 backdrop-blur-md text-[11px] font-mono shadow-lg">
               {[
-                { label: '35°', tilt: 35, title: 'হালকা ৩ডি' },
-                { label: '55°', tilt: 55, title: 'স্ট্যান্ডার্ড ৩ডি' },
-                { label: '65°', tilt: 65, title: 'ককপিট ৩ডি' }
+                { label: '35°', tilt: 35, title: 'Light 3D' },
+                { label: '55°', tilt: 55, title: 'Standard 3D' },
+                { label: '65°', tilt: 65, title: 'Cockpit 3D' }
               ].map(item => (
                 <button
                   key={item.tilt}
                   onClick={() => {
                     setCameraTilt(item.tilt);
                     setStatusMessage(
-                      language === 'bn'
-                        ? `৩ডি ক্যামেরার কোণ ${item.label} নির্ধারণ করা হয়েছে`
-                        : `3D Camera tilt set to ${item.label}`
+                      `3D Camera tilt set to ${item.label}`
                     );
                   }}
                   className={`px-2 py-1 rounded-lg font-black transition-all cursor-pointer ${
@@ -2595,11 +2758,11 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 ? 'bg-gradient-to-b from-indigo-500 via-purple-600 to-indigo-800 text-white border-indigo-300 shadow-[0_3px_0_#312e81,0_0_15px_rgba(99,102,241,0.5)] hover:shadow-[0_1px_0_#312e81] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none'
                 : 'bg-gradient-to-b from-slate-800 to-slate-900 text-slate-300 border-slate-700 shadow-[0_3px_0_#0f172a]'
             }`}
-            title="গাড়ির সাথে ক্যামেরা চলাচল অন/অফ"
+            title="Toggle Auto Follow Camera"
           >
             <Crosshair className="w-4 h-4 text-white" />
             <span className="hidden md:inline font-bengali">
-              {autoFollowMap ? 'ক্যামেরা লক: অন' : 'ক্যামেরা লক: অফ'}
+              {autoFollowMap ? 'Camera Lock: ON' : 'Camera Lock: OFF'}
             </span>
           </button>
 
@@ -2610,10 +2773,10 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
               setCarPosition({ ...carPosRef.current });
             }}
             className="p-2.5 rounded-xl bg-gradient-to-b from-teal-500 via-emerald-600 to-teal-800 text-white border-t border-teal-300 shadow-[0_3px_0_#064e3b,0_0_12px_rgba(20,184,166,0.5)] hover:shadow-[0_1px_0_#064e3b] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none text-xs flex items-center gap-1 transition-all cursor-pointer"
-            title="গাড়ির লোকেশনে ফোকাস করুন"
+            title="Center on Vehicle"
           >
             <Compass className="w-4 h-4 text-amber-300" />
-            <span className="hidden sm:inline font-bengali font-black">সেন্টার</span>
+            <span className="hidden sm:inline font-bengali font-black">Center</span>
           </button>
 
           {/* Camera Vision Toggle */}
@@ -2624,7 +2787,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 ? 'bg-gradient-to-b from-cyan-400 via-blue-500 to-cyan-700 text-white border-cyan-200 shadow-[0_3px_0_#0369a1,0_0_15px_rgba(6,182,212,0.6)] hover:shadow-[0_1px_0_#0369a1] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none'
                 : 'bg-gradient-to-b from-slate-800 to-slate-900 text-slate-300 border-slate-700 shadow-[0_3px_0_#0f172a]'
             }`}
-            title="AI বাম্পার ক্যামেরা ভিশন টগল"
+            title="Toggle Bumper Camera"
           >
             <Camera className="w-4 h-4" />
           </button>
@@ -2633,7 +2796,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         {/* Bottom-Left Quick Hint Pill */}
         <div className="absolute bottom-3 left-3 z-10 pointer-events-none hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#050c1b]/95 backdrop-blur-md border-2 border-indigo-500/50 text-cyan-200 text-[11px] font-bengali shadow-lg">
           <span className="text-amber-400">💡</span>
-          <span>ম্যাপে যেকোনো স্থানে ক্লিক করেও গন্তব্য পিন সেট করতে পারেন</span>
+          <span>Click anywhere on the map to set destination pin</span>
         </div>
 
         {/* Floating Mini Bumper Camera Vision (PiP HUD) with Vivid Neon Aesthetics */}
@@ -2704,7 +2867,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         </div>
       </div>
 
-      {/* 5. Quick Help & User Guide Modal (সহজ নির্দেশিকা) */}
+      {/* 5. Quick Help & User Guide Modal (Quick Guide) */}
       {showHelpModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div
@@ -2715,7 +2878,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             <div className="flex items-center justify-between pb-3 border-b">
               <h3 className="font-bold text-base md:text-lg font-bengali flex items-center gap-2">
                 <HelpCircle className="w-5 h-5 text-emerald-600" />
-                <span>{language === 'bn' ? 'সহজ ব্যবহার নির্দেশিকা' : 'How to Use (Quick Guide)'}</span>
+                <span>{'How to Use (Quick Guide)'}</span>
               </h3>
               <button
                 onClick={() => setShowHelpModal(false)}
@@ -2728,36 +2891,36 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             <div className="mt-4 flex flex-col gap-3 font-bengali text-xs md:text-sm">
               <div className="flex items-start gap-3 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50">
                 <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center shrink-0">
-                  ১
+                  1
                 </div>
                 <div>
-                  <div className="font-bold text-slate-900 dark:text-white">গন্তব্য নির্ধারণ করুন</div>
+                  <div className="font-bold text-slate-900 dark:text-white">Select Destination</div>
                   <div className="text-slate-600 dark:text-slate-300 text-xs mt-0.5">
-                    ওপরের বক্সে গন্তব্য লিখুন অথবা 🎙️ মাইক বোতাম চেপে মুখে বলুন (যেমন: "ধানমন্ডি লেক") অথবা ম্যাপে সরাসরি ক্লিক করুন।
+                    Type destination in the top search bar, click the 🎙️ mic button to speak, or click anywhere directly on the map.
                   </div>
                 </div>
               </div>
 
               <div className="flex items-start gap-3 p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/50">
                 <div className="w-7 h-7 rounded-full bg-sky-600 text-white font-bold flex items-center justify-center shrink-0">
-                  ২
+                  2
                 </div>
                 <div>
-                  <div className="font-bold text-slate-900 dark:text-white">যাত্রা শুরু চাপুন</div>
+                  <div className="font-bold text-slate-900 dark:text-white">Click Start Drive</div>
                   <div className="text-slate-600 dark:text-slate-300 text-xs mt-0.5">
-                    সবুজ <strong>'যাত্রা শুরু'</strong> বোতামে চাপ দিলে গাড়িটি ৬০ এফপিএস মসৃণ মোশনে রাস্তার ওপর দিয়ে চলতে শুরু করবে।
+                    Click the green <strong>'Start Drive'</strong> button to begin smooth 60 FPS autonomous road navigation.
                   </div>
                 </div>
               </div>
 
               <div className="flex items-start gap-3 p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/50">
                 <div className="w-7 h-7 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0">
-                  ৩
+                  3
                 </div>
                 <div>
-                  <div className="font-bold text-slate-900 dark:text-white">স্বয়ংক্রিয় নিরাপত্তা ও বাইপাস</div>
+                  <div className="font-bold text-slate-900 dark:text-white">Auto Safety & Bypass</div>
                   <div className="text-slate-600 dark:text-slate-300 text-xs mt-0.5">
-                    সামনে বাধা এলে গাড়ি নিজে নিজে ৫.৫ মিটারে অটো স্টপ করবে অথবা নতুন নিরাপদ বিকল্প পথ দিয়ে ঘুরে চলে যাবে!
+                    If an obstacle appears, the vehicle automatically stops within 5.5m or smoothly steers onto a clear detour!
                   </div>
                 </div>
               </div>
@@ -2768,7 +2931,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 onClick={() => setShowHelpModal(false)}
                 className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs font-bengali shadow-xs transition-all cursor-pointer"
               >
-                {language === 'bn' ? 'বুঝেছি, শুরু করুন' : 'Got it, let\'s go'}
+                {'Got it, let\'s go'}
               </button>
             </div>
           </div>
@@ -2785,7 +2948,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                   <Brain className="w-4.5 h-4.5" />
                 </div>
                 <h3 className="text-sm sm:text-base font-black text-white font-bengali">
-                  {language === 'bn' ? 'মেশিন লার্নিং ও নিউরাল নেটওয়ার্ক কনসোল' : 'Machine Learning & Neural Network Console'}
+                  {'Machine Learning & Neural Network Console'}
                 </h3>
               </div>
               <button
@@ -2797,7 +2960,6 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             </div>
             <div className="p-4 overflow-y-auto flex-1">
               <MachineLearningPanel
-                language={language}
                 theme={theme}
                 perception={{
                   fps: 60,
@@ -2820,6 +2982,94 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 pose={{ x: 0, y: 0, theta: carHeading, v: speedKmh / 3.6, omega: 0 }}
                 isRunning={isDriving}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* World-First Non-Humanoid UGV R&D Breakthrough Features Modal */}
+      {showRdModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-2xl w-full bg-[#080f25] border-2 border-purple-500/60 rounded-3xl shadow-[0_0_60px_rgba(168,85,247,0.4)] overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-purple-950 via-[#131b3b] to-indigo-950 border-b border-purple-500/30">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center border border-purple-400/40 shadow-inner">
+                  <Sparkles className="w-5 h-5 animate-pulse text-amber-300" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-white font-bengali tracking-wide">
+                    {'World-First Non-Humanoid UGV R&D Innovations'}
+                  </h3>
+                  <p className="text-xs text-purple-300 font-mono">
+                    {'Breakthrough features never before seen in commercial autonomous vehicles'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRdModal(false)}
+                className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-4 text-slate-200">
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border border-purple-500/30 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-purple-600/30 text-purple-300 font-bold flex items-center justify-center shrink-0 border border-purple-400/30">
+                  1
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">Quantum Neural Obstacle Prediction Engine (Q-NPE)</h4>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Unlike standard vehicles that react to obstacles on impact or proximity, Q-NPE uses predictive spatio-temporal neural tensors to calculate the exact future trajectory of stray animals and pedestrians 3.5 seconds before they cross the path.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-cyan-950/60 to-blue-950/60 border border-cyan-500/30 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-cyan-600/30 text-cyan-300 font-bold flex items-center justify-center shrink-0 border border-cyan-400/30">
+                  2
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">Sub-Surface Thermal Sinkhole & Cavity Radar (SST-SCR)</h4>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Equipped with real-time ground-penetrating thermal radar that scans underground pipe bursts, hollow soil pockets, and sinkholes beneath the asphalt before the vehicle's wheels roll over them, executing instant dynamic routing.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-teal-950/60 border border-emerald-500/30 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600/30 text-emerald-300 font-bold flex items-center justify-center shrink-0 border border-emerald-400/30">
+                  3
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">Bio-Acoustic Siren Directional Array (BAS-DA)</h4>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Ultra-sensitive directional acoustic microphone array that hears incoming emergency vehicle sirens (ambulances, fire engines) from 500 meters away through surrounding buildings and automatically pulls over to yield.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-950/60 to-orange-950/60 border border-amber-500/30 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-600/30 text-amber-300 font-bold flex items-center justify-center shrink-0 border border-amber-400/30">
+                  4
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">Swarm Mesh Telepathic Fleet Sync (SM-TFS)</h4>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Ad-hoc peer-to-peer UGV mesh networking that instantly shares real-time road obstacles, traffic jams, and hazard telemetry across all nearby autonomous units with zero cellular or cloud latency.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3.5 bg-[#050a18] border-t border-purple-500/30 flex justify-end">
+              <button
+                onClick={() => setShowRdModal(false)}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+              >
+                {'Close R&D Console'}
+              </button>
             </div>
           </div>
         </div>

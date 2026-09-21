@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { Language, Theme } from '../types';
+import { Theme } from '../types';
 import { Code, Copy, Check, Terminal, FileCode, Cpu } from 'lucide-react';
 
 interface CodeSamplesTabProps {
-  language: Language;
   theme?: Theme;
 }
 
 export const CodeSamplesTab: React.FC<CodeSamplesTabProps> = ({
-  language,
   theme = 'light'
 }) => {
   const isLight = theme === 'light';
@@ -19,11 +17,11 @@ export const CodeSamplesTab: React.FC<CodeSamplesTabProps> = ({
     perception: {
       name: 'perception_vision_node.py',
       lang: 'Python (ROS2 / OpenCV / ONNX)',
-      desc: 'চোখের কাজ: ক্যামেরা ফ্রেম গ্রহণ করে রিয়েল-টাইমে পাথ সেগমেন্টেশন ও অবস্ট্যাকল শনাক্তকরণ।',
+      desc: 'Perception AI: Real-time semantic path segmentation and obstacle classification from camera stream.',
       code: `#!/usr/bin/env python3
 """
 UGV GPS-Denied Autonomous Navigation
-Module 1: Perception AI (চোখের কাজ)
+Module 1: Perception AI (Computer Vision)
 """
 import rclpy
 from rclpy.node import Node
@@ -92,11 +90,11 @@ if __name__ == '__main__':
     slam: {
       name: 'visual_odometry_slam.py',
       lang: 'Python (Monocular VO / Lucas-Kanade)',
-      desc: 'ব্রেনের অংশ ১: ক্যামেরা ফ্রেমের ফিচার পয়েন্ট ট্র্যাক করে রোবটের বর্তমান কোঅর্ডিনেট (X, Y, Heading) হিসাব।',
+      desc: 'Visual Odometry: Real-time ego-motion estimation tracking frame-to-frame keypoints (X, Y, θ).',
       code: `#!/usr/bin/env python3
 """
 UGV GPS-Denied Autonomous Navigation
-Module 2: Visual Odometry & Dead Reckoning (ব্রেন)
+Module 2: Visual Odometry & Dead Reckoning
 """
 import cv2
 import numpy as np
@@ -158,7 +156,7 @@ class VisualOdometry:
     planner: {
       name: 'collision_avoidance_planner.py',
       lang: 'Python (Dynamic Window Approach / Reactive)',
-      desc: 'ব্রেনের অংশ ২: সামনের বাধা এড়িয়ে গন্তব্যের দিকে নিরাপদ গতি (Linear V) ও স্টিয়ারিং (Angular W) জেনারেট।',
+      desc: 'Local Path Planner: Collision-free velocity (v) and steering (ω) trajectory generation using DWA.',
       code: `#!/usr/bin/env python3
 """
 UGV GPS-Denied Autonomous Navigation
@@ -230,10 +228,10 @@ class ReactiveCollisionPlanner:
     firmware: {
       name: 'ugv_motor_bridge.ino',
       lang: 'C++ (Arduino / ESP32 Firmware)',
-      desc: 'হাতের কাজ: মাইক্রোকন্ট্রোলারে PWM ও দিক নিয়ন্ত্রণকারী ফার্মওয়্যার কোড।',
+      desc: 'Embedded Motor Firmware: Arduino / ESP32 dual-channel PWM duty cycle and direction control.',
       code: `/**
  * UGV GPS-Denied Autonomous Navigation
- * Module 4: Motor Actuation Firmware (হাতের কাজ)
+ * Module 4: Motor Actuation Firmware
  */
 #define PIN_PWM_L 5
 #define PIN_PWM_R 6
@@ -312,7 +310,7 @@ void stopMotors() {
           <h2 className={`text-xl font-bold font-bengali ${
             isLight ? 'text-slate-900' : 'text-white'
           }`}>
-            {language === 'bn' ? 'ইউজিভি স্বয়ংক্রিয় নেভিগেশন সোর্স কোড' : 'UGV Autonomous Navigation Source Code'}
+            {'UGV Autonomous Navigation Source Code'}
           </h2>
         </div>
 

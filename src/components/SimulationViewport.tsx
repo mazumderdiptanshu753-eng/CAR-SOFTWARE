@@ -403,7 +403,7 @@ export const SimulationViewport: React.FC<SimulationViewportProps> = ({
         <div className="flex items-center gap-2">
           <Navigation className={`w-4 h-4 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} />
           <h2 className={`font-semibold text-sm font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-            {language === 'bn' ? 'আউটডোর ট্রেইল ম্যাপ ও এসএলএএম ভিউ' : 'Outdoor Trail Map & SLAM Trajectory'}
+            {'Outdoor Trail Map & SLAM Trajectory'}
           </h2>
           <span className={`text-xs font-mono hidden sm:inline ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
             (100m × 100m Sector)

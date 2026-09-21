@@ -115,7 +115,7 @@ export const MissionMetricsStrip: React.FC<MissionMetricsStripProps> = ({
         isLight ? 'border-slate-200' : 'border-slate-800/60'
       }`}>
         <div className={`font-bengali ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-          {language === 'bn' ? 'স্বয়ংক্রিয় নেভিগেশন স্ট্যাটাস:' : 'Autonomy Validation:'}
+          {'Autonomy Validation:'}
         </div>
         <div className="flex items-center flex-wrap gap-2 font-mono">
           <span className={`flex items-center gap-1 px-2 py-0.5 rounded border ${

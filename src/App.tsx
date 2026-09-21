@@ -41,16 +41,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center">
               <AlertTriangle className="w-6 h-6" />
             </div>
-            <h2 className="text-lg font-bold">অ্যাপ লোড হতে সমস্যা হয়েছে</h2>
+            <h2 className="text-lg font-bold">Failed to load application</h2>
             <p className="text-xs text-slate-400">
-              {this.state.error?.message || 'একটি অপ্রত্যাশিত সমস্যা দেখা দিয়েছে। রিফ্রেশ করে আবার চেষ্টা করুন।'}
+              {this.state.error?.message || 'An unexpected error occurred. Please refresh and try again.'}
             </p>
             <button
               onClick={this.handleReload}
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>পুনরায় লোড করুন (Reload)</span>
+              <span>Reload Application</span>
             </button>
           </div>
         </div>
@@ -61,12 +61,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 export default function App() {
-  const [language, setLanguage] = useState<Language>('en');
   const [theme, setTheme] = useState<Theme>('dark');
   const [isRunning, setIsRunning] = useState<boolean>(true);
   const [autoStopActive, setAutoStopActive] = useState<boolean>(false);
   const [gmpQuotaReached, setGmpQuotaReached] = useState<boolean>(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(true);
+  const [isCarDisplayMode, setIsCarDisplayMode] = useState<boolean>(true);
 
   // Listen to Google Maps Demo Key quota notification
   useEffect(() => {
@@ -91,14 +91,12 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col font-sans transition-colors duration-300 relative overflow-x-hidden bg-[#040812] text-slate-100">
+      <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 relative overflow-x-hidden ${isCarDisplayMode ? 'bg-[#02040a] p-2 sm:p-4' : 'bg-[#040812]'} text-slate-100`}>
         {/* Dynamic Welcome Screen */}
         {showWelcome && (
           <WelcomeScreen
-            language={language}
             theme={theme}
             onEnterApp={() => setShowWelcome(false)}
-            onToggleLanguage={() => setLanguage(prev => (prev === 'bn' ? 'en' : 'bn'))}
           />
         )}
 
@@ -122,28 +120,71 @@ export default function App() {
           </div>
         )}
 
-        {/* Primary Top Header / Navbar */}
-        <Navbar
-          language={language}
-          onToggleLanguage={() => setLanguage(prev => (prev === 'bn' ? 'en' : 'bn'))}
-          theme={theme}
-          onToggleTheme={() => setTheme(prev => (prev === 'light' ? 'dark' : 'light'))}
-          missionStatus={isRunning ? 'ACTIVE' : 'HALTED'}
-          onTogglePlay={handleTogglePlay}
-          onReset={handleReset}
-          isRunning={isRunning}
-          autoStopTriggered={autoStopActive}
-        />
+        {/* Car Infotainment Console Bezel Wrapper when enabled */}
+        <div className={`w-full mx-auto flex flex-col relative z-10 transition-all duration-300 ${
+          isCarDisplayMode
+            ? 'max-w-[1620px] rounded-[2rem] sm:rounded-[2.5rem] border-[4px] sm:border-[6px] border-slate-700/80 bg-[#070d1d] shadow-[0_0_60px_rgba(0,0,0,0.95),inset_0_2px_15px_rgba(255,255,255,0.08)] overflow-hidden my-auto'
+            : 'max-w-[1700px]'
+        }`}>
+          {/* Car Dashboard Status Bar (Gear P-R-N-D, Speed, Climate, Battery) */}
+          <div className="bg-slate-950/90 border-b border-slate-800/80 px-4 py-2 flex items-center justify-between text-xs font-mono">
+            {/* Gear Shifter & Drive Mode */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] hidden sm:inline">Gear:</span>
+              <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-500">P</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-500">R</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-500">N</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-cyan-500 text-slate-950 shadow-[0_0_8px_rgba(6,182,212,0.6)]">D</span>
+              </div>
+              <span className="hidden md:inline px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
+                ⚡ FSD Autopilot Active
+              </span>
+            </div>
 
-        {/* Main GPS Autonomous Navigation Suite */}
-        <main className="relative z-10 flex-1 max-w-[1700px] w-full mx-auto p-2 sm:p-2.5 flex flex-col gap-2">
-          <GoogleMapsNavigator
-            language={language}
+            {/* Vehicle Telemetry Summary */}
+            <div className="flex items-center gap-3 sm:gap-6 text-slate-300 font-bold text-[11px]">
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500 text-[10px]">SPEED:</span>
+                <span className="text-cyan-300 font-black">{isRunning ? '48.5' : '0.0'} km/h</span>
+              </div>
+              <div className="hidden sm:flex items-center gap-1">
+                <span className="text-slate-500 text-[10px]">BATT:</span>
+                <span className="text-emerald-400 font-bold">94% (48V)</span>
+              </div>
+              <div className="hidden md:flex items-center gap-1">
+                <span className="text-slate-500 text-[10px]">CABIN:</span>
+                <span className="text-amber-300 font-bold">22.5°C ❄️</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500 text-[10px]">TIME:</span>
+                <span className="text-slate-200">12:45 PM</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Primary Top Header / Navbar */}
+          <Navbar
             theme={theme}
-            onEmergencyStop={handleEmergencyStop}
-            onAutoStopStateChange={setAutoStopActive}
+            onToggleTheme={() => setTheme(prev => (prev === 'light' ? 'dark' : 'light'))}
+            isCarDisplayMode={isCarDisplayMode}
+            onToggleCarDisplay={() => setIsCarDisplayMode(prev => !prev)}
+            missionStatus={isRunning ? 'ACTIVE' : 'HALTED'}
+            onTogglePlay={handleTogglePlay}
+            onReset={handleReset}
+            isRunning={isRunning}
+            autoStopTriggered={autoStopActive}
           />
-        </main>
+
+          {/* Main GPS Autonomous Navigation Suite */}
+          <main className="relative z-10 flex-1 w-full mx-auto p-2 sm:p-3 flex flex-col gap-2">
+            <GoogleMapsNavigator
+              theme={theme}
+              onEmergencyStop={handleEmergencyStop}
+              onAutoStopStateChange={setAutoStopActive}
+            />
+          </main>
+        </div>
       </div>
     </ErrorBoundary>
   );

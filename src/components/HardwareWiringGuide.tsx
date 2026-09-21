@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { Language, Theme } from '../types';
+import { Theme } from '../types';
 import { Cpu, Disc3, Eye, Zap, Shield, CheckCircle2, Sliders } from 'lucide-react';
 
 interface HardwareWiringGuideProps {
-  language: Language;
   theme?: Theme;
 }
 
 export const HardwareWiringGuide: React.FC<HardwareWiringGuideProps> = ({
-  language,
   theme = 'light'
 }) => {
   const isLight = theme === 'light';
@@ -29,14 +27,12 @@ export const HardwareWiringGuide: React.FC<HardwareWiringGuideProps> = ({
         <h2 className={`text-xl md:text-2xl font-bold font-bengali ${
           isLight ? 'text-slate-900' : 'text-white'
         }`}>
-          {language === 'bn' ? 'ইউজিভি হার্ডওয়্যার কানেকশন ও ওয়্যারিং স্কিম্যাটিক' : 'UGV Hardware Connections & Wiring Schematic'}
+          {'UGV Hardware Connections & Wiring Schematic'}
         </h2>
         <p className={`text-sm mt-2 font-bengali leading-relaxed ${
           isLight ? 'text-slate-600' : 'text-slate-400'
         }`}>
-          {language === 'bn'
-            ? 'আউটডোর স্বয়ংক্রিয় গাড়ির কম্পিউটার (Jetson/Pi), ক্যামেরা, মোটর ড্রাইভার এবং পাওয়ার সাপ্লাইয়ের নিখুঁত সংযোগ নির্দেশিকা।'
-            : 'Complete physical schematic connecting Single Board Computer, Vision Camera, Motor Driver, Encoders, and Battery.'}
+          {'Complete physical schematic connecting Single Board Computer, Vision Camera, Motor Driver, Encoders, and Battery.'}
         </p>
       </div>
 
@@ -54,7 +50,7 @@ export const HardwareWiringGuide: React.FC<HardwareWiringGuideProps> = ({
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
         >
-          {language === 'bn' ? 'ইলেকট্রিক্যাল ওয়্যারিং ডায়াগ্রাম' : 'Electrical Wiring Diagram'}
+          {'Electrical Wiring Diagram'}
         </button>
         <button
           onClick={() => setActiveTab('bill_of_materials')}
@@ -66,7 +62,7 @@ export const HardwareWiringGuide: React.FC<HardwareWiringGuideProps> = ({
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
         >
-          {language === 'bn' ? 'কম্পোনেন্ট তালিকা (BOM)' : 'Bill of Materials (BOM)'}
+          {'Bill of Materials (BOM)'}
         </button>
         <button
           onClick={() => setActiveTab('pinouts')}
@@ -78,7 +74,7 @@ export const HardwareWiringGuide: React.FC<HardwareWiringGuideProps> = ({
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
         >
-          {language === 'bn' ? 'পিন-আউট ও সিরিয়াল প্রোটোকল' : 'Pinouts & Serial Protocols'}
+          {'Pinouts & Serial Protocols'}
         </button>
       </div>
 
@@ -88,7 +84,7 @@ export const HardwareWiringGuide: React.FC<HardwareWiringGuideProps> = ({
           isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
         }`}>
           <h4 className={`text-sm font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-white'}`}>
-            {language === 'bn' ? 'রোবটের হার্ডওয়্যার ব্লক ডায়াগ্রাম' : 'Hardware Block Connections'}
+            {'Hardware Block Connections'}
           </h4>
 
           {/* Graphical representation */}
@@ -235,7 +231,7 @@ export const HardwareWiringGuide: React.FC<HardwareWiringGuideProps> = ({
           isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
         }`}>
           <h4 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-white'}`}>
-            {language === 'bn' ? 'মাইক্রোকন্ট্রোলার পিন ম্যাপিং ও সিরিয়াল প্রোটোকল' : 'MCU Pin Mapping & Serial Specs'}
+            {'MCU Pin Mapping & Serial Specs'}
           </h4>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

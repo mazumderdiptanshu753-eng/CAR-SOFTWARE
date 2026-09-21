@@ -78,7 +78,7 @@ export const BrainSlamCockpit: React.FC<BrainSlamCockpitProps> = ({
           isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/80 border-slate-800/80'
         }`}>
           <div className={`text-2xs font-bengali ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-            {language === 'bn' ? 'ভিজ্যুয়াল এসএলএএম পজিশন' : 'Estimated Pose (VO)'}
+            {'Estimated Pose (VO)'}
           </div>
           <div className={`text-base font-bold font-mono mt-1 ${isLight ? 'text-cyan-700' : 'text-cyan-400'}`}>
             X:{slamPose.x.toFixed(1)} Y:{slamPose.y.toFixed(1)}
@@ -156,7 +156,7 @@ export const BrainSlamCockpit: React.FC<BrainSlamCockpitProps> = ({
         <div className="flex items-center justify-between text-xs">
           <div className={`flex items-center gap-1.5 font-bengali ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
             <Route className={`w-3.5 h-3.5 ${isLight ? 'text-cyan-700' : 'text-cyan-400'}`} />
-            <span className="font-semibold">{language === 'bn' ? 'পাথ প্ল্যানার (A* + DWA)' : 'Path Planner (A* + DWA)'}</span>
+            <span className="font-semibold">{'Path Planner (A* + DWA)'}</span>
           </div>
           <div className={`text-2xs font-mono flex items-center gap-2 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
             <span>Target v: {actualPose.v.toFixed(2)} m/s</span>

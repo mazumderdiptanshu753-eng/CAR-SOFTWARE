@@ -17,7 +17,6 @@ import {
 import { Language, Theme } from '../types';
 
 interface UGVDefensiveSafetyModuleProps {
-  language: Language;
   theme: Theme;
   // Perimeter Defense State
   isPerimeterArmed: boolean;
@@ -43,7 +42,6 @@ interface UGVDefensiveSafetyModuleProps {
 }
 
 export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> = ({
-  language,
   theme,
   isPerimeterArmed,
   onTogglePerimeterArm,
@@ -78,21 +76,21 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
               : 'bg-gradient-to-br from-[#180d1e] via-[#24102c] to-[#120817] border-rose-500/40 text-slate-100 shadow-[0_4px_25px_rgba(244,63,94,0.2)]'
         }`}
       >
-        <div className="flex items-center justify-between text-[11px] font-bold pb-1.5 mb-2 font-bengali border-b border-rose-500/30">
+        <div className="flex items-center justify-between text-[11px] font-bold pb-1.5 mb-2 border-b border-rose-500/30">
           <span className="flex items-center gap-1.5 text-rose-400 font-extrabold">
             <ShieldAlert className="w-4 h-4 text-rose-400 animate-pulse" />
-            <span>৩৬০° পেরিমিটার ডিফেন্স ও অ্যান্টি-ট্যাম্পার</span>
+            <span>360° Perimeter Defense & Anti-Tamper System</span>
           </span>
           <div className="flex items-center gap-1.5">
             <button
               onClick={onTogglePerimeterArm}
-              className={`px-2 py-0.5 rounded-full text-[10px] font-black font-bengali transition-all cursor-pointer border ${
+              className={`px-2 py-0.5 rounded-full text-[10px] font-black transition-all cursor-pointer border ${
                 isPerimeterArmed
                   ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
                   : 'bg-slate-800 text-slate-400 border-slate-700'
               }`}
             >
-              {isPerimeterArmed ? 'ডিফেন্স অন' : 'ডিফেন্স অফ'}
+              {isPerimeterArmed ? 'Defense Armed' : 'Defense Disarmed'}
             </button>
             <span
               className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black border ${
@@ -117,23 +115,23 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
                   : 'bg-[#0b1424] border-cyan-500/30 text-cyan-300'
               }`}
             >
-              <div className="flex items-center gap-1.5 font-bengali">
+              <div className="flex items-center gap-1.5">
                 {isEngineLocked ? (
                   <Lock className="w-3.5 h-3.5 text-rose-400 animate-bounce" />
                 ) : (
                   <Unlock className="w-3.5 h-3.5 text-cyan-400" />
                 )}
-                <span className="font-bold">ইঞ্জিন:</span>
+                <span className="font-bold">Engine:</span>
               </div>
               <span className="font-black">
-                {isEngineLocked ? '🛑 হার্ডওয়্যার লক' : 'সক্রিয় (Drive)'}
+                {isEngineLocked ? '🛑 HARDWARE LOCKED' : 'ONLINE (Drive Ready)'}
               </span>
             </div>
 
             {/* Ultrasonic Proximity Zone */}
             <div className="p-2 rounded-xl bg-[#0b1424] border border-cyan-500/30 text-cyan-300 flex items-center justify-between">
-              <span className="font-bengali font-bold">সিকিউরিটি জোন:</span>
-              <span className="font-mono font-black text-amber-300">২.০ মিটার (360°)</span>
+              <span className="font-bold">Security Buffer:</span>
+              <span className="font-mono font-black text-amber-300">2.0 Meters (360°)</span>
             </div>
           </div>
 
@@ -141,30 +139,30 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
           {isBreached && (
             <div className="p-2 rounded-xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 text-white shadow-[0_0_20px_rgba(244,63,94,0.7)] flex flex-col gap-1 animate-pulse">
               <div className="flex items-center justify-between">
-                <span className="font-black text-xs font-bengali flex items-center gap-1.5">
+                <span className="font-black text-xs flex items-center gap-1.5">
                   <AlertOctagon className="w-4 h-4" />
-                  <span>অনুপ্রবেশকারী শনাক্ত! দূরত্ব: {breachDistanceMeters?.toFixed(1)}m</span>
+                  <span>INTRUDER DETECTED! Proximity: {breachDistanceMeters?.toFixed(1)}m</span>
                 </span>
                 <span className="text-[10px] font-mono bg-black/40 px-2 py-0.5 rounded-full">
                   SIREN ACTIVE
                 </span>
               </div>
-              <p className="text-[10px] font-bengali text-rose-100">
-                ইঞ্জিন তৎক্ষণাৎ নিষ্ক্রিয় করা হয়েছে এবং হাই-পিচ অ্যালার্ম ও ৩৬০° ফ্ল্যাশার চালু রয়েছে।
+              <p className="text-[10px] text-rose-100">
+                Motors immediately disabled with emergency brake. High-frequency ultrasonic horn and strobe flashers engaged.
               </p>
             </div>
           )}
 
           {/* Interactive Defense Controls */}
-          <div className="flex items-center gap-2 font-bengali">
+          <div className="flex items-center gap-2">
             {!isBreached ? (
               <button
                 onClick={onSimulateIntruderBreach}
                 className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-black text-slate-950 bg-gradient-to-b from-rose-400 via-rose-500 to-red-600 border-t border-rose-200 shadow-[0_2px_0_#881337,0_0_12px_rgba(244,63,94,0.5)] active:translate-y-0.5 cursor-pointer flex items-center justify-center gap-1.5 transition-all"
-                title="রোভারের ২ মিটারের মধ্যে অনুপ্রবেশকারীর উপস্থিতি সিমুলেট করুন"
+                title="Simulate unauthorized entity breaching the 2-meter safety zone"
               >
                 <Zap className="w-3.5 h-3.5 text-slate-950 fill-slate-950" />
-                <span>অনুপ্রবেশকারী টেস্ট (&lt;২মি.)</span>
+                <span>Simulate Intruder (&lt;2m)</span>
               </button>
             ) : (
               <button
@@ -172,7 +170,7 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
                 className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-black text-white bg-gradient-to-b from-emerald-500 to-teal-700 border-t border-emerald-200 shadow-[0_2px_0_#065f46,0_0_12px_rgba(16,185,129,0.5)] active:translate-y-0.5 cursor-pointer flex items-center justify-center gap-1.5 transition-all"
               >
                 <Unlock className="w-3.5 h-3.5 text-white" />
-                <span>রিসেট ও ইঞ্জিন আনলক</span>
+                <span>Clear Alarm & Unlock Engine</span>
               </button>
             )}
 
@@ -184,7 +182,7 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
                   ? 'bg-rose-500 text-white border-rose-300 shadow-[0_0_8px_rgba(244,63,94,0.7)]'
                   : 'bg-slate-800 text-slate-400 border-slate-700'
               }`}
-              title={isSirenAudible ? 'সাইরেন শব্দ চালু' : 'সাইরেন শব্দ মিউট'}
+              title={isSirenAudible ? 'Mute Siren Audio' : 'Unmute Siren Audio'}
             >
               {isSirenAudible ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
@@ -202,10 +200,10 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
               : 'bg-gradient-to-br from-[#191108] via-[#261a0d] to-[#120c06] border-amber-500/40 text-slate-100 shadow-[0_4px_25px_rgba(245,158,11,0.2)]'
         }`}
       >
-        <div className="flex items-center justify-between text-[11px] font-bold pb-1.5 mb-2 font-bengali border-b border-amber-500/30">
+        <div className="flex items-center justify-between text-[11px] font-bold pb-1.5 mb-2 border-b border-amber-500/30">
           <span className="flex items-center gap-1.5 text-amber-400 font-extrabold">
             <RotateCw className="w-4 h-4 text-amber-400" />
-            <span>জাইরো রোল-ওভার ও সেলফ-রাইটিং রিকভারি</span>
+            <span>Gyro Rollover & Self-Righting Recovery</span>
           </span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black border ${
@@ -263,21 +261,21 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
           {/* Orientation Stats & Tumble Warnings */}
           <div className="col-span-7 flex flex-col gap-1.5">
             <div className="flex justify-between items-center text-[10px] font-mono p-1.5 rounded-lg bg-[#060a14] border border-amber-500/30">
-              <span className="font-bengali text-slate-300">চ্যাসিস অবস্থা:</span>
+              <span className="text-slate-300">Chassis State:</span>
               <span className={`font-black ${isTumbled ? 'text-rose-400 animate-pulse' : 'text-emerald-400'}`}>
-                {isTumbled ? 'উল্টে গেছে (Inverted)' : 'সোজা (Normal)'}
+                {isTumbled ? 'Inverted (Capsized)' : 'Normal (Upright)'}
               </span>
             </div>
 
             <div className="flex justify-between items-center text-[10px] font-mono p-1.5 rounded-lg bg-[#060a14] border border-amber-500/30">
-              <span className="font-bengali text-slate-300">অটো রাইটিং:</span>
+              <span className="text-slate-300">Auto Righting:</span>
               <button
                 onClick={onToggleAutoSelfRight}
-                className={`px-1.5 py-0.5 rounded text-[9px] font-bengali font-bold cursor-pointer ${
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer ${
                   autoSelfRightEnabled ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
                 }`}
               >
-                {autoSelfRightEnabled ? 'সক্রিয়' : 'নিষ্ক্রিয়'}
+                {autoSelfRightEnabled ? 'ENABLED' : 'MANUAL'}
               </button>
             </div>
 
@@ -292,15 +290,15 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
         </div>
 
         {/* Action Buttons: Simulate Rollover & Execute Kinetic Recovery */}
-        <div className="grid grid-cols-2 gap-2 mt-2 font-bengali">
+        <div className="grid grid-cols-2 gap-2 mt-2">
           <button
             onClick={onSimulateRollover}
             disabled={isSelfRightingActive}
             className="py-1.5 px-2 rounded-xl text-[11px] font-black text-slate-950 bg-gradient-to-b from-amber-400 to-orange-500 border-t border-amber-200 shadow-[0_2px_0_#9a3412,0_0_10px_rgba(245,158,11,0.4)] active:translate-y-0.5 cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
-            title="গাড়ির ১৮০ ডিগ্রি উল্টে যাওয়া সিমুলেট করুন"
+            title="Simulate rover flipping over 180 degrees"
           >
             <Flame className="w-3.5 h-3.5 text-slate-950" />
-            <span>গাড়ি উল্টে দিন (১৮০°)</span>
+            <span>Simulate Rollover (180°)</span>
           </button>
 
           <button
@@ -313,7 +311,7 @@ export const UGVDefensiveSafetyModule: React.FC<UGVDefensiveSafetyModuleProps> =
             }`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSelfRightingActive ? 'animate-spin' : ''}`} />
-            <span>রিভার্স পালস (সোজা করুন)</span>
+            <span>Reverse Pulse (Right UGV)</span>
           </button>
         </div>
       </div>

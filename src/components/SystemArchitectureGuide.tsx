@@ -1,18 +1,16 @@
 import React, { useState } from 'react';
-import { Language, Theme } from '../types';
+import { Theme } from '../types';
 import { translations } from '../data/translations';
 import { Eye, Brain, Disc3, ShieldCheck, CheckCircle2, ChevronRight, Cpu, Layers, Target, Compass, Zap } from 'lucide-react';
 
 interface SystemArchitectureGuideProps {
-  language: Language;
-  theme?: Theme;
+    theme?: Theme;
 }
 
 export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = ({
-  language,
-  theme = 'light'
+    theme = 'light'
 }) => {
-  const t = translations[language];
+  const t = translations.en;
   const isLight = theme === 'light';
   const [activeSection, setActiveSection] = useState<'overview' | 'challenges' | 'pipeline' | 'evaluation'>('overview');
 
@@ -54,7 +52,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
         >
-          {language === 'bn' ? 'কোর ৩টি মডিউল (চোখ, ব্রেন, হাত)' : 'Core 3 Biological Modules'}
+          {'Core 3 Biological Modules'}
         </button>
 
         <button
@@ -67,7 +65,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
         >
-          {language === 'bn' ? 'প্রধান ৩টি চ্যালেঞ্জ ও সমাধান' : '3 Key Challenges & Solutions'}
+          {'3 Key Challenges & Solutions'}
         </button>
 
         <button
@@ -80,7 +78,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
         >
-          {language === 'bn' ? 'সিস্টেম ডেটাফ্লো পাইপলাইন' : 'Dataflow Architecture'}
+          {'Dataflow Architecture'}
         </button>
 
         <button
@@ -93,11 +91,11 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
           }`}
         >
-          {language === 'bn' ? 'সফলতার মাপকাঠি (Success Criteria)' : 'Evaluation & Success Metrics'}
+          {'Evaluation & Success Metrics'}
         </button>
       </div>
 
-      {/* Section 1: The 3 Core Modules (চোখ, ব্রেন, হাত) */}
+      {/* Section 1: The 3 Core Modules (Eyes, Brain, Hands) */}
       {activeSection === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Eye Card */}
@@ -228,7 +226,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
               </div>
               <div className="flex-1">
                 <h4 className={`text-base font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {t.challenge1Title} (পাথ ডিটেকশন ও সেগমেন্টেশন)
+                  {t.challenge1Title} (Path Detection & Segmentation)
                 </h4>
                 <p className={`text-xs font-bengali mt-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                   {t.challenge1Desc}
@@ -237,7 +235,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
                   isLight ? 'bg-white border-slate-200 text-slate-700 shadow-xs' : 'bg-slate-900 border-slate-800 text-slate-300'
                 }`}>
                   <div className={`font-semibold font-bengali ${isLight ? 'text-sky-700' : 'text-sky-300'}`}>
-                    {language === 'bn' ? 'প্রস্তাবিত এআই আর্কিটেকচার:' : 'Recommended Vision AI Architecture:'}
+                    {'Recommended Vision AI Architecture:'}
                   </div>
                   <ul className={`list-disc list-inside space-y-1 font-mono text-2xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                     <li><strong className={isLight ? 'text-slate-900' : 'text-slate-200'}>FastSCNN / BiSeNet:</strong> 30+ FPS real-time semantic segmentation on Jetson Nano / Raspberry Pi 5.</li>
@@ -261,7 +259,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
               </div>
               <div className="flex-1">
                 <h4 className={`text-base font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {t.challenge2Title} (জিপিএস-বিহীন ভিজ্যুয়াল লোকালাইজেশন)
+                  {t.challenge2Title} (GPS-Denied Visual Localization)
                 </h4>
                 <p className={`text-xs font-bengali mt-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                   {t.challenge2Desc}
@@ -270,7 +268,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
                   isLight ? 'bg-white border-slate-200 text-slate-700 shadow-xs' : 'bg-slate-900 border-slate-800 text-slate-300'
                 }`}>
                   <div className={`font-semibold font-bengali ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
-                    {language === 'bn' ? 'এসএলএএম ও ওডোমেট্রি সমাধান:' : 'Visual Odometry / SLAM Implementation:'}
+                    {'Visual Odometry / SLAM Implementation:'}
                   </div>
                   <ul className={`list-disc list-inside space-y-1 font-mono text-2xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                     <li><strong className={isLight ? 'text-slate-900' : 'text-slate-200'}>Feature Extraction:</strong> FAST / ORB corner detector with Lucas-Kanade optical flow feature tracking.</li>
@@ -294,7 +292,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
               </div>
               <div className="flex-1">
                 <h4 className={`text-base font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {t.challenge3Title} (কলিশন অ্যাভয়েডেন্স ও মোটর ড্রাইভার)
+                  {t.challenge3Title} (Collision Avoidance & Motor Actuation)
                 </h4>
                 <p className={`text-xs font-bengali mt-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
                   {t.challenge3Desc}
@@ -303,7 +301,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
                   isLight ? 'bg-white border-slate-200 text-slate-700 shadow-xs' : 'bg-slate-900 border-slate-800 text-slate-300'
                 }`}>
                   <div className={`font-semibold font-bengali ${isLight ? 'text-amber-800' : 'text-amber-300'}`}>
-                    {language === 'bn' ? 'অ্যালগরিদম ও মোটর কন্ট্রোল কৌশল:' : 'Path Planning & Actuation Details:'}
+                    {'Path Planning & Actuation Details:'}
                   </div>
                   <ul className={`list-disc list-inside space-y-1 font-mono text-2xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                     <li><strong className={isLight ? 'text-slate-900' : 'text-slate-200'}>Dynamic Window Approach (DWA):</strong> Explores $(v, \omega)$ velocity space, scoring candidate arcs for clearance, goal progress, and speed.</li>
@@ -323,7 +321,7 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
           isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
         }`}>
           <h3 className={`text-base font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-white'}`}>
-            {language === 'bn' ? 'রোবট কন্ট্রোল সিস্টেম ডেটাফ্লো চার্ট' : 'End-to-End System Dataflow Architecture'}
+            {'End-to-End System Dataflow Architecture'}
           </h3>
 
           {/* Visual Step-by-Step Chain */}
@@ -333,9 +331,9 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
               isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
               <span className={`text-2xs font-mono font-bold ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>STAGE 01: SENSE</span>
-              <h5 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>ক্যামেরা ইনপুট</h5>
+              <h5 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>Camera Input</h5>
               <p className={`text-2xs font-bengali ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                বাম্পার ক্যামেরা থেকে প্রতি সেকেন্ডে ৩০টি ফ্রেম (1280×720 RGB) ক্যাশ মেমরিতে লোড হয়।
+                Forward bumper camera captures 30 FPS (1280x720 RGB) into system memory buffer.
               </p>
             </div>
 
@@ -344,9 +342,9 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
               isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
               <span className={`text-2xs font-mono font-bold ${isLight ? 'text-sky-700' : 'text-sky-400'}`}>STAGE 02: PERCEIVE</span>
-              <h5 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>এআই পারসেপশন</h5>
+              <h5 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>Perception AI</h5>
               <p className={`text-2xs font-bengali ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                রাস্তা শনাক্তকরণ ও সামনে থাকা বড় পাথর, খাদ বা গাছের অবস্থান ও দূরত্ব মেজার করা হয়।
+                Detects traversable pathways and measures distances to obstacles, ditches, or boulders.
               </p>
             </div>
 
@@ -355,9 +353,9 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
               isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
               <span className={`text-2xs font-mono font-bold ${isLight ? 'text-purple-700' : 'text-purple-400'}`}>STAGE 03: PLAN</span>
-              <h5 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>এসএলএএম ও প্ল্যানার</h5>
+              <h5 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>SLAM & Path Planner</h5>
               <p className={`text-2xs font-bengali ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                জিপিএস ছাড়াই বর্তমান স্থানাঙ্ক এবং গন্তব্য অনুযায়ী নিরাপদ স্টিয়ারিং কোণ ও বেগ হিসাব করে।
+                Computes relative pose without GPS and evaluates collision-free steering angles and linear velocities.
               </p>
             </div>
 
@@ -366,9 +364,9 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
               isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
               <span className={`text-2xs font-mono font-bold ${isLight ? 'text-amber-800' : 'text-amber-400'}`}>STAGE 04: ACTUATE</span>
-              <h5 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>মোটর ড্রাইভার</h5>
+              <h5 className={`font-bold font-bengali ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>Motor Actuation</h5>
               <p className={`text-2xs font-bengali ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                মাইক্রোকন্ট্রোলারে PWM সিগন্যাল পাঠিয়ে চাকা ঘুরিয়ে রোবটকে গন্তব্যের দিকে এগিয়ে নেয়।
+                Dispatches dual-channel PWM motor signals to the microcontroller to drive vehicle wheels.
               </p>
             </div>
           </div>
@@ -382,43 +380,43 @@ export const SystemArchitectureGuide: React.FC<SystemArchitectureGuideProps> = (
         }`}>
           <h3 className={`text-base font-bold font-bengali flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
             <CheckCircle2 className={`w-5 h-5 ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`} />
-            <span>{language === 'bn' ? 'প্রজেক্টের চূড়ান্ত সফলতার মাপকাঠি' : 'Final Evaluation & Success Metrics'}</span>
+            <span>{'Final Evaluation & Success Metrics'}</span>
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div className={`border rounded-lg p-3.5 space-y-1.5 shadow-xs ${
               isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
-              <h5 className={`font-bold font-bengali ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>১. ১০০% জিপিএস-মুক্ত স্বয়ংক্রিয়তা</h5>
+              <h5 className={`font-bold font-bengali ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>1. 100% GPS-Denied Autonomy</h5>
               <p className={`font-bengali text-2xs leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                কোনো ধরনের জিপিএস বা এক্সটার্নাল রিমোট কন্ট্রোল ছাড়াই রোবট শুধু ক্যামেরা দেখে পয়েন্ট 'এ' থেকে পয়েন্ট 'বি'-তে পৌঁছাবে।
+                Navigate from Point A to Point B purely via vision sensors and dead-reckoning without external GPS or manual control.
               </p>
             </div>
 
             <div className={`border rounded-lg p-3.5 space-y-1.5 shadow-xs ${
               isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
-              <h5 className={`font-bold font-bengali ${isLight ? 'text-sky-700' : 'text-sky-400'}`}>২. শূন্য সংঘর্ষের নিশ্চয়তা (Zero Collision)</h5>
+              <h5 className={`font-bold font-bengali ${isLight ? 'text-sky-700' : 'text-sky-400'}`}>2. Zero Collision Guarantee</h5>
               <p className={`font-bengali text-2xs leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                হঠাৎ রাস্তায় পাথর পড়লে বা গভীর খাদ থাকলে গাড়িটি সঙ্গে সঙ্গে গতি কমিয়ে সুরক্ষিত নতুন রুট ধরে বাধা এড়াবে।
+                Immediately decelerate and dynamically reroute around sudden hazards, boulders, or terrain fissures.
               </p>
             </div>
 
             <div className={`border rounded-lg p-3.5 space-y-1.5 shadow-xs ${
               isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
-              <h5 className={`font-bold font-bengali ${isLight ? 'text-amber-800' : 'text-amber-400'}`}>৩. আলোর তারতম্যে কার্যকর স্থায়িত্ব</h5>
+              <h5 className={`font-bold font-bengali ${isLight ? 'text-amber-800' : 'text-amber-400'}`}>3. Robustness Across Illumination</h5>
               <p className={`font-bengali text-2xs leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                প্রখর রোদ, গাছের ছায়া বা সন্ধ্যার স্বল্প আলোতেও পারসেপশন মডেল যাতে পথ চিনতে ভুল না করে।
+                Maintain consistent semantic segmentation under high glare, canopy shadows, and low-light dusk conditions.
               </p>
             </div>
 
             <div className={`border rounded-lg p-3.5 space-y-1.5 shadow-xs ${
               isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}>
-              <h5 className={`font-bold font-bengali ${isLight ? 'text-purple-700' : 'text-purple-400'}`}>৪. ন্যূনতম ড্রিফট ও ট্র্যাকিং নির্ভুলতা</h5>
+              <h5 className={`font-bold font-bengali ${isLight ? 'text-purple-700' : 'text-purple-400'}`}>4. Minimal Odometry Drift Error</h5>
               <p className={`font-bengali text-2xs leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                ভিজ্যুয়াল ওডোমেট্রি ড্রিফট মোট দূরত্বের ২% এর নিচে ধরে রেখে গন্তব্য স্থানাঙ্কে সফলভাবে পার্কিং সম্পন্ন করা।
+                Keep dead-reckoning drift below 2% of total trajectory distance for accurate waypoint arrival.
               </p>
             </div>
           </div>

@@ -1,14 +1,14 @@
 import React from 'react';
-import { ShieldCheck, Cpu, Globe, Play, Pause, RotateCcw, Zap, Sun, Moon, Navigation, AlertTriangle, Smartphone, Monitor } from 'lucide-react';
-import { Language, Theme } from '../types';
+import { ShieldCheck, Cpu, Play, Pause, RotateCcw, Zap, Sun, Moon, Navigation, AlertTriangle, Smartphone, Monitor, Car } from 'lucide-react';
+import { Theme } from '../types';
 
 interface NavbarProps {
-  language: Language;
-  onToggleLanguage: () => void;
   theme: Theme;
   onToggleTheme: () => void;
   isMobileView?: boolean;
   onToggleMobileView?: () => void;
+  isCarDisplayMode?: boolean;
+  onToggleCarDisplay?: () => void;
   missionStatus: string;
   onTogglePlay: () => void;
   onReset: () => void;
@@ -17,12 +17,12 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  language,
-  onToggleLanguage,
   theme,
   onToggleTheme,
   isMobileView,
   onToggleMobileView,
+  isCarDisplayMode,
+  onToggleCarDisplay,
   missionStatus,
   onTogglePlay,
   onReset,
@@ -50,14 +50,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className={`font-black text-sm sm:text-base tracking-normal font-bengali flex items-center gap-1.5 ${
+              <h1 className={`font-black text-sm sm:text-base tracking-normal flex items-center gap-1.5 ${
                 isLight ? 'text-slate-950' : 'text-white'
               }`}>
                 <span className={isLight ? 'text-slate-950 font-black' : 'text-cyan-300 font-black'}>
-                  {language === 'bn' ? 'ইউজিভি ৩ডি অটোনোমাস ককপিট' : 'UGV 3D Autonomous Cockpit'}
+                  UGV Car Infotainment Console
                 </span>
                 <span className="text-xs font-mono font-black px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 border border-amber-500 shadow-sm">
-                  3D HUD
+                  CAR DISPLAY
                 </span>
               </h1>
               <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border shadow-sm flex items-center gap-1.5 ${
@@ -70,10 +70,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                     : 'bg-emerald-500/25 text-emerald-200 border-emerald-400 font-black'
               }`}>
                 <span className={`w-2 h-2 rounded-full ${autoStopTriggered ? 'bg-rose-600 animate-ping' : 'bg-emerald-500 animate-ping'}`}></span>
-                <span className="font-bengali">
-                  {autoStopTriggered
-                    ? (language === 'bn' ? 'জরুরি স্টপ!' : 'AUTO STOP')
-                    : (language === 'bn' ? 'জিপিএস লাইভ' : 'GPS Live')}
+                <span>
+                  {autoStopTriggered ? 'AUTO STOP ENGAGED' : 'GPS / VIO LIVE'}
                 </span>
               </span>
             </div>
@@ -82,19 +80,19 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Compact Right Controls with Vibrant Colorful Buttons */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Mobile Phone Frame View Toggle */}
-          {onToggleMobileView && (
+          {/* Car Infotainment Display Mode Toggle */}
+          {onToggleCarDisplay && (
             <button
-              onClick={onToggleMobileView}
+              onClick={onToggleCarDisplay}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
-                isMobileView
+                isCarDisplayMode
                   ? 'bg-cyan-600 text-white border-cyan-400 shadow-[0_2px_0_#0e7490]'
                   : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
               }`}
-              title={isMobileView ? 'Switch to Fullscreen' : 'Switch to Mobile Frame'}
+              title={isCarDisplayMode ? 'Switch to Fullscreen' : 'Switch to Car Display Mode'}
             >
-              {isMobileView ? <Smartphone className="w-4 h-4 text-cyan-200" /> : <Monitor className="w-4 h-4" />}
-              <span className="hidden sm:inline text-xs">{isMobileView ? 'Mobile' : 'Full'}</span>
+              <Car className="w-4 h-4 text-cyan-200" />
+              <span className="text-xs">{isCarDisplayMode ? 'Car Screen' : 'Fullscreen'}</span>
             </button>
           )}
 
@@ -110,20 +108,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             title={isLight ? 'Switch to Dark Theme' : 'Switch to Light Theme'}
           >
             {isLight ? <Sun className="w-4 h-4 text-slate-950" /> : <Moon className="w-4 h-4 text-slate-950" />}
-            <span className="hidden sm:inline text-xs font-black">{isLight ? 'Light Mode' : 'Dark Mode'}</span>
-          </button>
-
-          {/* Language Switcher with High Contrast */}
-          <button
-            id="btn-language-toggle"
-            onClick={onToggleLanguage}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-black bg-purple-700 hover:bg-purple-600 text-white border-purple-400 shadow-[0_2px_0_#3b0764] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
-          >
-            <Globe className="w-4 h-4 text-white" />
-            <span className="text-xs font-mono font-black">{language === 'bn' ? 'বাংলা' : 'EN'}</span>
+            <span className="hidden sm:inline text-xs font-black">{isLight ? 'Light' : 'Dark'}</span>
           </button>
         </div>
       </div>
     </header>
   );
 };
+

@@ -393,7 +393,7 @@ export const CameraPerceptionView: React.FC<CameraPerceptionViewProps> = ({
       <div className="flex items-center justify-between text-xs pt-1">
         <div className={`flex items-center gap-1.5 font-bengali ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
           <Eye className={`w-3.5 h-3.5 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} />
-          <span>{language === 'bn' ? 'চোখের কাজ: ভিজ্যুয়াল ফ্রন্ট ভিউ' : 'Eye Module: Visual Perception Feed'}</span>
+          <span>{'Eye Module: Visual Perception Feed'}</span>
         </div>
 
         <button
