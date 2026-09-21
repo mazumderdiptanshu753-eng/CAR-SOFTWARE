@@ -349,6 +349,30 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   // Hardware WebSerial & UI Layout States
   const [serialConnected, setSerialConnected] = useState<boolean>(false);
   const [showCameraHud, setShowCameraHud] = useState<boolean>(true);
+  const [showRearCamera, setShowRearCamera] = useState<boolean>(true);
+  const [useRealCamera, setUseRealCamera] = useState<boolean>(false);
+  const rearVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (showRearCamera && useRealCamera) {
+      navigator.mediaDevices?.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(stream => {
+          if (rearVideoRef.current) {
+            rearVideoRef.current.srcObject = stream;
+          }
+        })
+        .catch(err => {
+          console.warn('Real camera access error:', err);
+          setUseRealCamera(false);
+        });
+    } else {
+      if (rearVideoRef.current && rearVideoRef.current.srcObject) {
+        const stream = rearVideoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        rearVideoRef.current.srcObject = null;
+      }
+    }
+  }, [showRearCamera, useRealCamera]);
   const [isCameraHudExpanded, setIsCameraHudExpanded] = useState<boolean>(false);
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [showMLModal, setShowMLModal] = useState<boolean>(false);
@@ -2216,6 +2240,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           <Map
             id="ugv-autonomous-map"
             mapId="DEMO_MAP_ID"
+            mapTypeId={'hybrid'}
             defaultCenter={{ lat: carPosition.lat, lng: carPosition.lng }}
             defaultZoom={17}
             defaultTilt={55}
@@ -2804,6 +2829,20 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           >
             <Camera className="w-4 h-4" />
           </button>
+
+          {/* Rear Camera Toggle */}
+          <button
+            onClick={() => setShowRearCamera(prev => !prev)}
+            className={`p-2.5 rounded-xl border-t text-xs flex items-center gap-1 transition-all cursor-pointer ${
+              showRearCamera
+                ? 'bg-gradient-to-b from-indigo-400 via-purple-500 to-indigo-700 text-white border-indigo-200 shadow-[0_3px_0_#312e81,0_0_15px_rgba(99,102,241,0.6)] hover:shadow-[0_1px_0_#312e81] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none'
+                : 'bg-gradient-to-b from-slate-800 to-slate-900 text-slate-300 border-slate-700 shadow-[0_3px_0_#0f172a]'
+            }`}
+            title="Toggle Rear View Camera"
+          >
+            <Camera className="w-4 h-4 rotate-180" />
+            <span className="text-[10px] font-bold font-mono">REAR</span>
+          </button>
         </div>
 
         {/* Bottom-Left Quick Hint Pill */}
@@ -2872,6 +2911,60 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 ) : (
                   <span className="text-emerald-400 font-black">PATH CLEAR</span>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Mini Rear Camera Vision (PiP HUD) */}
+        {showRearCamera && (
+          <div className="absolute bottom-3 left-3 sm:left-4 z-10 w-48 sm:w-60 rounded-2xl overflow-hidden border-2 border-indigo-400/80 bg-[#050c1b]/95 shadow-[0_0_30px_rgba(99,102,241,0.4)] backdrop-blur-md transition-all">
+            <div className="px-3 py-1.5 bg-gradient-to-r from-indigo-950 via-purple-950 to-indigo-950 border-b-2 border-indigo-400/50 flex items-center justify-between text-[10px] text-indigo-300 font-mono font-black">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-ping"></span>
+                <span>REAR VIEW</span>
+              </span>
+              <button
+                onClick={() => setUseRealCamera(prev => !prev)}
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer transition-all ${
+                  useRealCamera ? 'bg-cyan-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-300 hover:text-white'
+                }`}
+                title="Toggle Real Camera Feed"
+              >
+                {useRealCamera ? '📷 Live Cam' : '🎮 Sim HUD'}
+              </button>
+            </div>
+
+            <div className="relative h-24 sm:h-28 bg-[#030712] flex items-center justify-center overflow-hidden">
+              {useRealCamera ? (
+                <video
+                  ref={rearVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              ) : (
+                <>
+                  {/* Perspective grid lines for rear view */}
+                  <div className="absolute inset-0 opacity-20 bg-[linear-gradient(to_right,#6366f1_1px,transparent_1px),linear-gradient(to_bottom,#6366f1_1px,transparent_1px)] bg-[size:16px_16px]"></div>
+                  
+                  {/* Reversing parking guide lines (Green/Yellow/Red zones) */}
+                  <div className="absolute bottom-0 w-32 h-16 border-t-2 border-dashed border-emerald-400/80 [clip-path:polygon(10%_100%,30%_0%,70%_0%,90%_100%)] bg-emerald-500/10 flex items-end justify-center pb-1">
+                    <span className="text-[8px] font-mono text-emerald-300 font-bold">SAFE ZONE</span>
+                  </div>
+                  <div className="absolute bottom-12 w-20 h-6 border-t-2 border-amber-400/80 bg-amber-500/10 flex items-center justify-center">
+                    <span className="text-[7px] font-mono text-amber-300 font-bold">CAUTION 1.5M</span>
+                  </div>
+                </>
+              )}
+
+              {/* Rear live telemetry */}
+              <div className="absolute top-1.5 left-2 px-2 py-0.5 rounded-lg bg-black/80 text-indigo-300 border border-indigo-500/40 text-[9px] font-mono font-bold">
+                {useRealCamera ? 'WEBCAM: ACTIVE' : 'REAR SENSOR: ACTIVE'}
+              </div>
+              <div className="absolute bottom-1 right-2 text-[9px] font-mono font-black text-emerald-400">
+                CLEAR
               </div>
             </div>
           </div>
