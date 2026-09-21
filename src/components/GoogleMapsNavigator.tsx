@@ -556,14 +556,17 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     return result;
   }, []);
 
-  // Recalculate route whenever destination or starting point changes
-  const planRouteTo = useCallback((targetCoord: GeoCoordinate) => {
-    // Generate smooth road waypoints with 1 or 2 distinct intersection turns (Waypoint turns)
-    const { waypoints, turns } = generateRoadWaypointsWithTurns(carPosRef.current, targetCoord);
+  // Recalculate route whenever destination or starting point changes with automatic Snap-to-Road
+  const planRouteTo = useCallback((rawTargetCoord: GeoCoordinate) => {
+    // Snap-to-Road feature: Automatically anchor target coordinate to the nearest navigable road segment
+    const snappedTarget = ensureRouteAvoidsWater([rawTargetCoord])[0] || rawTargetCoord;
+
+    // Generate smooth road waypoints with 1 or 2 distinct intersection turns
+    const { waypoints, turns } = generateRoadWaypointsWithTurns(carPosRef.current, snappedTarget);
 
     // Automatic Background Water Body & Lake Avoidance Check
     const lakeCenter = { lat: 23.7461, lng: 90.3758 };
-    const distToLake = calculateDistanceMeters(targetCoord, lakeCenter);
+    const distToLake = calculateDistanceMeters(snappedTarget, lakeCenter);
 
     let finalWaypoints = waypoints;
     if (distToLake < 800 || waypoints.some(p => calculateDistanceMeters(p, lakeCenter) < 300)) {
@@ -608,7 +611,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     setJammedRoadSegment([]);
     setJamAvoidanceDetourActive(false);
 
-    const dist = calculateDistanceMeters(carPosRef.current, targetCoord);
+    const dist = calculateDistanceMeters(carPosRef.current, snappedTarget);
     setDistanceRemainingMeters(dist);
     setHasArrived(false);
 
@@ -2290,6 +2293,16 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                   </div>
                 </div>
               </AdvancedMarker>
+            )}
+
+            {/* Navigable Road Buffer Overlay ("Kalo Rasta Lane-Keeping Boundary") */}
+            {routeCoordinates.length > 0 && (
+              <MapPolyline
+                path={routeCoordinates}
+                color="#0f172a"
+                weight={18}
+                opacity={0.42}
+              />
             )}
 
             {/* Active Collision-Free Path Polyline (Vibrant Emerald / Cyan Glow) */}

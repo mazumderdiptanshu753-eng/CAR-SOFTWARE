@@ -130,14 +130,36 @@ export const MachineLearningPanel: React.FC<MachineLearningPanelProps> = ({
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
             <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Real-time Neural Detection Stream</span>
+            <span>Active Object Classes & Vision Telemetry Log</span>
           </h4>
           <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-            {perception.detectedEntities.length} Objects Tracked
+            {perception.detectedEntities.length} Classes Tracked
           </span>
         </div>
 
-        <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+        {/* Telemetry Log Breakdown */}
+        <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-2 rounded-xl border border-indigo-500/20 text-[11px] font-mono">
+          <div className="flex flex-col items-center p-1.5 bg-slate-900/60 rounded-lg border border-cyan-500/20">
+            <span className="text-slate-400 text-[10px]">PEDESTRIAN</span>
+            <span className="text-cyan-300 font-bold">
+              {perception.detectedEntities.filter(e => e.type.toLowerCase().includes('pedestrian') || e.type.toLowerCase().includes('person')).length} Active
+            </span>
+          </div>
+          <div className="flex flex-col items-center p-1.5 bg-slate-900/60 rounded-lg border border-amber-500/20">
+            <span className="text-slate-400 text-[10px]">DEBRIS/OBSTACLE</span>
+            <span className="text-amber-300 font-bold">
+              {perception.detectedEntities.filter(e => e.type.toLowerCase().includes('debris') || e.type.toLowerCase().includes('obstacle')).length} Active
+            </span>
+          </div>
+          <div className="flex flex-col items-center p-1.5 bg-slate-900/60 rounded-lg border border-indigo-500/20">
+            <span className="text-slate-400 text-[10px]">WATER HAZARD</span>
+            <span className="text-indigo-300 font-bold">
+              {perception.detectedEntities.filter(e => e.type.toLowerCase().includes('water') || e.type.toLowerCase().includes('lake')).length} Active
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
           {perception.detectedEntities.map(entity => (
             <div
               key={entity.id}
@@ -147,11 +169,13 @@ export const MachineLearningPanel: React.FC<MachineLearningPanelProps> = ({
                 <span className={`w-2 h-2 rounded-full ${
                   entity.dangerLevel === 'CRITICAL' ? 'bg-rose-500 animate-ping' : entity.dangerLevel === 'CAUTION' ? 'bg-amber-400' : 'bg-emerald-400'
                 }`}></span>
-                <span className="font-bold text-white uppercase">{entity.type}</span>
-                <span className="text-[10px] text-slate-400 font-mono">({entity.distance}m, {entity.angle > 0 ? `+${entity.angle}°` : `${entity.angle}°`})</span>
+                <div className="flex flex-col">
+                  <span className="font-bold text-white uppercase tracking-wider">{entity.type}</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Range: {entity.distance}m | Azimuth: {entity.angle > 0 ? `+${entity.angle}°` : `${entity.angle}°`}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-3 font-mono">
-                <span className="text-cyan-300 font-bold">{Math.round(entity.confidence * 100)}% Conf</span>
+              <div className="flex items-center gap-2.5 font-mono">
+                <span className="text-cyan-300 font-bold">{Math.round(entity.confidence * 100)}%</span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                   entity.dangerLevel === 'CRITICAL' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                 }`}>
@@ -162,7 +186,7 @@ export const MachineLearningPanel: React.FC<MachineLearningPanelProps> = ({
           ))}
           {perception.detectedEntities.length === 0 && (
             <div className="text-center py-4 text-xs text-slate-500">
-              No obstacles detected in view sector
+              No object classes currently tracked in camera field of view
             </div>
           )}
         </div>

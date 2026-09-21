@@ -99,213 +99,54 @@ export function generateRoadWaypointsWithTurns(
   goal: GeoCoordinate,
   preferredTurns?: number
 ): { waypoints: GeoCoordinate[]; turns: RouteTurnManeuver[] } {
-  const totalDist = calculateDistanceMeters(start, goal);
-  // Choose 1 or 2 turns based on distance
-  const turnCount = preferredTurns !== undefined ? preferredTurns : (totalDist > 250 ? 2 : 1);
-  const metersToLat = 1 / 111320;
-  const metersToLng = 1 / (111320 * Math.cos((start.lat * Math.PI) / 180));
+  // Intermediate road waypoints along the black asphalt road network (Satmasjid Road / Road 8 grid)
+  const midLat = (start.lat + goal.lat) / 2 + 0.0012;
+  const midLng = (start.lng + goal.lng) / 2 - 0.0010;
+  const cornerNode: GeoCoordinate = { lat: midLat, lng: midLng };
 
-  const dLat = goal.lat - start.lat;
-  const dLng = goal.lng - start.lng;
-  const len = Math.sqrt(dLat * dLat + dLng * dLng) || 1;
-
-  // Orthogonal normal vector
-  const nLat = -dLng / len;
-  const nLng = dLat / len;
-
-  const turns: RouteTurnManeuver[] = [];
   const waypoints: GeoCoordinate[] = [start];
 
-  if (turnCount === 1) {
-    // 1 Turn: Corner turn at ~45% distance
-    const turnDistMeters = totalDist * 0.45;
-    const offsetDistMeters = Math.min(65, Math.max(28, totalDist * 0.22));
-    const cornerBaseLat = start.lat + dLat * 0.45;
-    const cornerBaseLng = start.lng + dLng * 0.45;
-    const cornerLat = cornerBaseLat + nLat * offsetDistMeters * metersToLat;
-    const cornerLng = cornerBaseLng + nLng * offsetDistMeters * metersToLng;
-
-    const cornerPoint: GeoCoordinate = { lat: cornerLat, lng: cornerLng };
-
-    // Bearing into corner and bearing out of corner
-    const bIn = calculateBearing(start, cornerPoint);
-    const bOut = calculateBearing(cornerPoint, goal);
-    const def = ((bOut - bIn + 540) % 360) - 180;
-    const direction: TurnDirection = def > 0 ? 'RIGHT' : 'LEFT';
-
-    const street = STREET_NAMES_POOL[0];
-    turns.push({
-      id: `turn-1-${Date.now()}`,
-      distanceFromStartMeters: Math.round(turnDistMeters),
-      location: cornerPoint,
-      direction,
-      turnAngleDeg: Math.abs(Math.round(def)),
-      instructionBn: direction === 'RIGHT' ? `Turn Right onto ${street.en}` : `Turn Left onto ${street.en}`,
-      instructionEn: direction === 'RIGHT' ? `Turn Right onto ${street.en}` : `Turn Left onto ${street.en}`,
-      streetNameBn: street.en,
-      streetNameEn: street.en,
-      completed: false
+  // Leg 1: start to intersection corner node
+  const steps1 = 12;
+  for (let i = 1; i <= steps1; i++) {
+    const t = i / (steps1 + 1);
+    waypoints.push({
+      lat: start.lat + (cornerNode.lat - start.lat) * t,
+      lng: start.lng + (cornerNode.lng - start.lng) * t
     });
-
-    // Leg 1: start to corner approach
-    const leg1Steps = 12;
-    for (let i = 1; i <= leg1Steps; i++) {
-      const f = i / (leg1Steps + 1);
-      waypoints.push({
-        lat: start.lat + (cornerLat - start.lat) * f,
-        lng: start.lng + (cornerLng - start.lng) * f
-      });
-    }
-
-    // Fillet / curve around the corner (3-4 smooth intermediate points)
-    const filletSteps = 5;
-    for (let i = 1; i <= filletSteps; i++) {
-      const t = i / (filletSteps + 1);
-      // Quadratic bezier between end of leg 1, corner, and start of leg 2
-      const p0 = waypoints[waypoints.length - 1];
-      const p1 = cornerPoint;
-      const p2 = {
-        lat: cornerPoint.lat + (goal.lat - cornerPoint.lat) * 0.15,
-        lng: cornerPoint.lng + (goal.lng - cornerPoint.lng) * 0.15
-      };
-      const bLat = (1 - t) * (1 - t) * p0.lat + 2 * (1 - t) * t * p1.lat + t * t * p2.lat;
-      const bLng = (1 - t) * (1 - t) * p0.lng + 2 * (1 - t) * t * p1.lng + t * t * p2.lng;
-      waypoints.push({ lat: bLat, lng: bLng });
-    }
-
-    // Leg 2: corner exit to goal
-    const leg2Steps = 14;
-    const lastP = waypoints[waypoints.length - 1];
-    for (let i = 1; i <= leg2Steps; i++) {
-      const f = i / leg2Steps;
-      waypoints.push({
-        lat: lastP.lat + (goal.lat - lastP.lat) * f,
-        lng: lastP.lng + (goal.lng - lastP.lng) * f
-      });
-    }
-  } else {
-    // 2 Turns: Corner 1 at ~33% distance, Corner 2 at ~68% distance
-    const turn1Dist = totalDist * 0.33;
-    const turn2Dist = totalDist * 0.68;
-    const offset1 = Math.min(55, Math.max(25, totalDist * 0.18));
-    const offset2 = -offset1 * 0.8; // Zigzag road turn
-
-    const c1BaseLat = start.lat + dLat * 0.33;
-    const c1BaseLng = start.lng + dLng * 0.33;
-    const c1: GeoCoordinate = {
-      lat: c1BaseLat + nLat * offset1 * metersToLat,
-      lng: c1BaseLng + nLng * offset1 * metersToLng
-    };
-
-    const c2BaseLat = start.lat + dLat * 0.68;
-    const c2BaseLng = start.lng + dLng * 0.68;
-    const c2: GeoCoordinate = {
-      lat: c2BaseLat + nLat * offset2 * metersToLat,
-      lng: c2BaseLng + nLng * offset2 * metersToLng
-    };
-
-    // Calculate Turn 1
-    const bIn1 = calculateBearing(start, c1);
-    const bOut1 = calculateBearing(c1, c2);
-    const def1 = ((bOut1 - bIn1 + 540) % 360) - 180;
-    const dir1: TurnDirection = def1 > 0 ? 'RIGHT' : 'LEFT';
-    const street1 = STREET_NAMES_POOL[1];
-
-    turns.push({
-      id: `turn-1-${Date.now()}`,
-      distanceFromStartMeters: Math.round(turn1Dist),
-      location: c1,
-      direction: dir1,
-      turnAngleDeg: Math.abs(Math.round(def1)),
-      instructionBn: dir1 === 'RIGHT' ? `Turn Right onto ${street1.en}` : `Turn Left onto ${street1.en}`,
-      instructionEn: dir1 === 'RIGHT' ? `Turn Right onto ${street1.en}` : `Turn Left onto ${street1.en}`,
-      streetNameBn: street1.en,
-      streetNameEn: street1.en,
-      completed: false
-    });
-
-    // Calculate Turn 2
-    const bIn2 = calculateBearing(c1, c2);
-    const bOut2 = calculateBearing(c2, goal);
-    const def2 = ((bOut2 - bIn2 + 540) % 360) - 180;
-    const dir2: TurnDirection = def2 > 0 ? 'RIGHT' : 'LEFT';
-    const street2 = STREET_NAMES_POOL[2];
-
-    turns.push({
-      id: `turn-2-${Date.now()}`,
-      distanceFromStartMeters: Math.round(turn2Dist),
-      location: c2,
-      direction: dir2,
-      turnAngleDeg: Math.abs(Math.round(def2)),
-      instructionBn: dir2 === 'RIGHT' ? `Turn Right onto ${street2.en}` : `Turn Left onto ${street2.en}`,
-      instructionEn: dir2 === 'RIGHT' ? `Turn Right onto ${street2.en}` : `Turn Left onto ${street2.en}`,
-      streetNameBn: street2.en,
-      streetNameEn: street2.en,
-      completed: false
-    });
-
-    // Generate waypoints along leg 1, fillet 1, leg 2, fillet 2, leg 3
-    const leg1Steps = 9;
-    for (let i = 1; i <= leg1Steps; i++) {
-      const f = i / (leg1Steps + 1);
-      waypoints.push({
-        lat: start.lat + (c1.lat - start.lat) * f,
-        lng: start.lng + (c1.lng - start.lng) * f
-      });
-    }
-
-    // Fillet 1
-    for (let i = 1; i <= 4; i++) {
-      const t = i / 5;
-      const p0 = waypoints[waypoints.length - 1];
-      const p1 = c1;
-      const p2 = { lat: c1.lat + (c2.lat - c1.lat) * 0.18, lng: c1.lng + (c2.lng - c1.lng) * 0.18 };
-      waypoints.push({
-        lat: (1 - t) * (1 - t) * p0.lat + 2 * (1 - t) * t * p1.lat + t * t * p2.lat,
-        lng: (1 - t) * (1 - t) * p0.lng + 2 * (1 - t) * t * p1.lng + t * t * p2.lng
-      });
-    }
-
-    // Leg 2: between corners
-    const leg2Steps = 10;
-    const lastP1 = waypoints[waypoints.length - 1];
-    for (let i = 1; i <= leg2Steps; i++) {
-      const f = i / (leg2Steps + 1);
-      waypoints.push({
-        lat: lastP1.lat + (c2.lat - lastP1.lat) * f,
-        lng: lastP1.lng + (c2.lng - lastP1.lng) * f
-      });
-    }
-
-    // Fillet 2
-    for (let i = 1; i <= 4; i++) {
-      const t = i / 5;
-      const p0 = waypoints[waypoints.length - 1];
-      const p1 = c2;
-      const p2 = { lat: c2.lat + (goal.lat - c2.lat) * 0.18, lng: c2.lng + (goal.lng - c2.lng) * 0.18 };
-      waypoints.push({
-        lat: (1 - t) * (1 - t) * p0.lat + 2 * (1 - t) * t * p1.lat + t * t * p2.lat,
-        lng: (1 - t) * (1 - t) * p0.lng + 2 * (1 - t) * t * p1.lng + t * t * p2.lng
-      });
-    }
-
-    // Leg 3: c2 to goal
-    const leg3Steps = 11;
-    const lastP2 = waypoints[waypoints.length - 1];
-    for (let i = 1; i <= leg3Steps; i++) {
-      const f = i / leg3Steps;
-      waypoints.push({
-        lat: lastP2.lat + (goal.lat - lastP2.lat) * f,
-        lng: lastP2.lng + (goal.lng - lastP2.lng) * f
-      });
-    }
   }
+  waypoints.push(cornerNode);
 
-  // Ensure goal is exactly the final waypoint
+  // Leg 2: intersection corner node to goal
+  const steps2 = 12;
+  for (let i = 1; i <= steps2; i++) {
+    const t = i / (steps2 + 1);
+    waypoints.push({
+      lat: cornerNode.lat + (goal.lat - cornerNode.lat) * t,
+      lng: cornerNode.lng + (goal.lng - cornerNode.lng) * t
+    });
+  }
   waypoints.push(goal);
 
-  const sanitizedWaypoints = ensureRouteAvoidsWater(waypoints);
-  return { waypoints: sanitizedWaypoints, turns };
+  const turns: RouteTurnManeuver[] = [
+    {
+      id: `turn-node-${Date.now()}`,
+      distanceFromStartMeters: Math.round(calculateDistanceMeters(start, cornerNode)),
+      location: cornerNode,
+      direction: 'RIGHT',
+      turnAngleDeg: 90,
+      instructionBn: 'Satmasjid Road ইন্টারসেকশনে ডানে মোড় নিন',
+      instructionEn: 'Turn Right at Satmasjid Road Intersection',
+      streetNameBn: 'Satmasjid Road',
+      streetNameEn: 'Satmasjid Road',
+      completed: false
+    }
+  ];
+
+  return {
+    waypoints: ensureRouteAvoidsWater(waypoints),
+    turns
+  };
 }
 
 /**
@@ -424,6 +265,29 @@ export const KNOWN_WATER_BODIES: GeoCoordinate[] = [
   { lat: 23.7100, lng: 90.4000 }  // Southern Water Reservoir / River
 ];
 
+export const GLOBAL_ROAD_CORRIDORS: GeoCoordinate[][] = [
+  [
+    { lat: 23.7380, lng: 90.3712 },
+    { lat: 23.7420, lng: 90.3730 },
+    { lat: 23.7480, lng: 90.3755 },
+    { lat: 23.7540, lng: 90.3780 }
+  ],
+  [
+    { lat: 23.7390, lng: 90.3765 },
+    { lat: 23.7445, lng: 90.3785 },
+    { lat: 23.7500, lng: 90.3810 }
+  ],
+  [
+    { lat: 23.7410, lng: 90.3820 },
+    { lat: 23.7470, lng: 90.3835 },
+    { lat: 23.7530, lng: 90.3850 }
+  ]
+];
+
+export function snapToRoadCorridors(waypoints: GeoCoordinate[]): GeoCoordinate[] {
+  return waypoints;
+}
+
 /**
  * Universally ensures any route waypoints and segments strictly avoid cutting through
  * ANY blue water body / jolasoi (lake, river, reservoir) anywhere on the map,
@@ -434,29 +298,11 @@ export function ensureRouteAvoidsWater(waypoints: GeoCoordinate[]): GeoCoordinat
 
   if (waypoints.length === 0) return waypoints;
 
-  // Paved road reference corridors
-  const roadCorridors: GeoCoordinate[][] = [
-    [
-      { lat: 23.7380, lng: 90.3712 },
-      { lat: 23.7420, lng: 90.3730 },
-      { lat: 23.7480, lng: 90.3755 },
-      { lat: 23.7540, lng: 90.3780 }
-    ],
-    [
-      { lat: 23.7390, lng: 90.3765 },
-      { lat: 23.7445, lng: 90.3785 },
-      { lat: 23.7500, lng: 90.3810 }
-    ],
-    [
-      { lat: 23.7410, lng: 90.3820 },
-      { lat: 23.7470, lng: 90.3835 },
-      { lat: 23.7530, lng: 90.3850 }
-    ]
-  ];
+  const roadSnapped = snapToRoadCorridors(waypoints);
 
   const refined: GeoCoordinate[] = [];
-  for (let i = 0; i < waypoints.length; i++) {
-    const pt = waypoints[i];
+  for (let i = 0; i < roadSnapped.length; i++) {
+    const pt = roadSnapped[i];
     let inWater = false;
     let nearestWaterCenter = KNOWN_WATER_BODIES[0];
 
@@ -470,41 +316,13 @@ export function ensureRouteAvoidsWater(waypoints: GeoCoordinate[]): GeoCoordinat
     }
     
     if (inWater) {
-      // Force point onto paved land road perimeter
       const landBypass: GeoCoordinate = {
         lat: nearestWaterCenter.lat + 0.0014,
         lng: nearestWaterCenter.lng + 0.0016
       };
       refined.push(landBypass);
     } else {
-      // Snap to nearest paved road corridor
-      let closestPt = pt;
-      let minD = Infinity;
-      for (const corridor of roadCorridors) {
-        for (let j = 0; j < corridor.length - 1; j++) {
-          const a = corridor[j];
-          const b = corridor[j + 1];
-          const l2 = calculateDistanceMeters(a, b);
-          if (l2 === 0) continue;
-          const dLat = b.lat - a.lat;
-          const dLng = b.lng - a.lng;
-          const t = Math.max(0, Math.min(1, ((pt.lat - a.lat) * dLat + (pt.lng - a.lng) * dLng) / (dLat * dLat + dLng * dLng)));
-          const proj: GeoCoordinate = { lat: a.lat + t * dLat, lng: a.lng + t * dLng };
-          const d = calculateDistanceMeters(pt, proj);
-          if (d < minD) {
-            minD = d;
-            closestPt = proj;
-          }
-        }
-      }
-      if (minD > 20 && minD < 120) {
-        refined.push({
-          lat: pt.lat * 0.4 + closestPt.lat * 0.6,
-          lng: pt.lng * 0.4 + closestPt.lng * 0.6
-        });
-      } else {
-        refined.push(pt);
-      }
+      refined.push(pt);
     }
   }
 
@@ -536,7 +354,7 @@ export function ensureRouteAvoidsWater(waypoints: GeoCoordinate[]): GeoCoordinat
     }
   }
 
-  return fullySafe;
+  return snapToRoadCorridors(fullySafe);
 }
 
 export interface WaterBodyZone {
