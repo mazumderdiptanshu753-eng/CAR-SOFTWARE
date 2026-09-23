@@ -89,9 +89,11 @@ export default function App() {
     setAutoStopActive(true);
   };
 
+  const isLight = theme === 'light';
+
   return (
     <ErrorBoundary>
-      <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 relative overflow-x-hidden ${isCarDisplayMode ? 'bg-[#02040a] p-2 sm:p-4' : 'bg-[#040812]'} text-slate-100`}>
+      <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 relative overflow-x-hidden ${isLight ? 'bg-slate-100 text-slate-900' : isCarDisplayMode ? 'bg-[#02040a] p-2 sm:p-4 text-slate-100' : 'bg-[#040812] text-slate-100'}`}>
         {/* Dynamic Welcome Screen */}
         {showWelcome && (
           <WelcomeScreen
@@ -123,11 +125,13 @@ export default function App() {
         {/* Car Infotainment Console Bezel Wrapper when enabled */}
         <div className={`w-full mx-auto flex flex-col relative z-10 transition-all duration-300 ${
           isCarDisplayMode
-            ? 'max-w-[1620px] rounded-[2rem] sm:rounded-[2.5rem] border-[4px] sm:border-[6px] border-slate-700/80 bg-[#070d1d] shadow-[0_0_60px_rgba(0,0,0,0.95),inset_0_2px_15px_rgba(255,255,255,0.08)] overflow-hidden my-auto'
+            ? isLight
+              ? 'max-w-[1620px] rounded-[2rem] sm:rounded-[2.5rem] border-[4px] sm:border-[6px] border-slate-300 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.15)] overflow-hidden my-auto'
+              : 'max-w-[1620px] rounded-[2rem] sm:rounded-[2.5rem] border-[4px] sm:border-[6px] border-slate-700/80 bg-[#070d1d] shadow-[0_0_60px_rgba(0,0,0,0.95),inset_0_2px_15px_rgba(255,255,255,0.08)] overflow-hidden my-auto'
             : 'max-w-[1700px]'
         }`}>
           {/* Car Dashboard Status Bar (Gear P-R-N-D, Speed, Climate, Battery) */}
-          <div className="bg-slate-950/90 border-b border-slate-800/80 px-4 py-2 flex items-center justify-between text-xs font-mono">
+          <div className={`${isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-950/90 border-slate-800/80 text-slate-100'} border-b px-4 py-2 flex items-center justify-between text-xs font-mono`}>
             {/* Gear Shifter & Drive Mode */}
             <div className="flex items-center gap-2">
               <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] hidden sm:inline">Gear:</span>

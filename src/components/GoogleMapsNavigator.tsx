@@ -33,6 +33,7 @@ import {
   ChevronRight,
   Sliders,
   CheckCircle2,
+  Power,
   Clock,
   Navigation,
   ArrowRight,
@@ -282,6 +283,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const [speedKmh, setSpeedKmh] = useState<number>(0);
   const [isDriving, setIsDriving] = useState<boolean>(false);
   const [hasArrived, setHasArrived] = useState<boolean>(false);
+  const [isSystemPoweredOn, setIsSystemPoweredOn] = useState<boolean>(true);
 
   // Smooth Camera Follow state
   const [autoFollowMap, setAutoFollowMap] = useState<boolean>(true);
@@ -293,7 +295,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const [autoStopEnabled, setAutoStopEnabled] = useState<boolean>(true);
   const [autoPathFinderEnabled, setAutoPathFinderEnabled] = useState<boolean>(true);
   const [autoSpeedAdjustEnabled, setAutoSpeedAdjustEnabled] = useState<boolean>(true);
-  const [baseCruiseSpeed, setBaseCruiseSpeed] = useState<number>(24.0); // km/h
+  const [baseCruiseSpeed, setBaseCruiseSpeed] = useState<number>(60.0); // km/h
 
   // Real-time Autonomous Sensor & Safety State
   const [obstacles, setObstacles] = useState<MapObstacle[]>(INITIAL_MAP_OBSTACLES);
@@ -1456,8 +1458,8 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           }
         }
 
-        // 4. DYNAMIC SPEED GOVERNOR COMPUTATION
-        let activeSpeed = baseCruiseSpeed;
+        // 4. DYNAMIC SPEED GOVERNOR COMPUTATION & SMOOTH RAMPING UP TO 60 KM/H
+        let targetSpeed = baseCruiseSpeed; // 60 km/h
         if (autoSpeedAdjustEnabled) {
           const speedResult = computeAutoAdjustedSpeed(
             baseCruiseSpeed,
@@ -1465,12 +1467,28 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             closestDist < 25 ? closestDist : null,
             5.5
           );
-          activeSpeed = speedResult.targetSpeedKmh;
+          targetSpeed = speedResult.targetSpeedKmh;
           setSpeedGovernorState(speedResult.governorState);
           setThrottlePercent(speedResult.throttlePercent);
         } else {
           setSpeedGovernorState('CRUISE');
           setThrottlePercent(100);
+          targetSpeed = 60;
+        }
+
+        // Smoothly accelerate or decelerate towards targetSpeed
+        const currentSpeed = speedKmhRef.current;
+        let activeSpeed = currentSpeed;
+        const rampRate = 18 * deltaSec; // smooth transition rate
+        if (currentSpeed < targetSpeed) {
+          activeSpeed = Math.min(targetSpeed, currentSpeed + rampRate);
+        } else if (currentSpeed > targetSpeed) {
+          activeSpeed = Math.max(targetSpeed, currentSpeed - rampRate * 1.5);
+        }
+
+        // When not driving (stopped or arrived), smoothly ramp down to 0
+        if (!isDrivingRef.current) {
+          activeSpeed = Math.max(0, currentSpeed - 40 * deltaSec);
         }
 
         setSpeedKmh(activeSpeed);
@@ -1626,21 +1644,19 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
   const tripProgress = totalPathLength > 0 ? Math.min(100, Math.max(0, Math.round((travelledMetersRef.current / totalPathLength) * 100))) : 0;
 
   return (
-    <div className="flex flex-col gap-2 w-full">
-      {/* 1. Ultra-Compact 3D Cockpit Header & Navigation Strip */}
-      <div
-        className={`px-3 py-2 rounded-2xl border-2 transition-all ${
-          isLight
-            ? 'bg-gradient-to-r from-white via-indigo-50 to-cyan-50 border-indigo-300 text-slate-800 shadow-[0_4px_20px_rgba(99,102,241,0.15)]'
-            : 'bg-gradient-to-r from-[#0d162d] via-[#1a1236] to-[#0e1c2e] border-indigo-500/50 text-slate-100 shadow-[0_4px_25px_rgba(99,102,241,0.25)]'
-        }`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2.5">
-          {/* 3D Search Box with Integrated Voice Mic */}
+    <>
+      {/* Location Search & Drive Controls Toolbar */}
+      <div className={`px-4 py-3 rounded-2xl border-2 transition-all ${
+        isLight
+          ? 'bg-gradient-to-r from-white via-indigo-50 to-cyan-50 border-indigo-300 text-slate-800 shadow-[0_4px_20px_rgba(99,102,241,0.15)]'
+          : 'bg-gradient-to-r from-[#0d162d] via-[#1a1236] to-[#0e1c2e] border-indigo-500/50 text-slate-100 shadow-[0_4px_25px_rgba(99,102,241,0.25)]'
+      }`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Search Box with Voice Mic */}
           <div className="relative flex-1 min-w-[240px] max-w-xl">
             <div className="relative flex items-center">
               <div className="absolute left-3 flex items-center pointer-events-none text-cyan-400">
-                <Search className="w-3.5 h-3.5" />
+                <Search className="w-4 h-4" />
               </div>
 
               <input
@@ -1652,17 +1668,14 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                   setShowSuggestions(true);
                 }}
                 onFocus={() => setShowSuggestions(true)}
-                placeholder={
-                  'Search destination or speak...'
-                }
-                className={`w-full pl-8.5 pr-22 py-2 text-xs sm:text-sm font-medium rounded-xl border-2 transition-all focus:outline-hidden shadow-inner ${
+                placeholder={'Search destination or speak...'}
+                className={`w-full pl-9 pr-24 py-2 text-xs sm:text-sm font-medium rounded-xl border-2 transition-all focus:outline-hidden shadow-inner ${
                   isLight
                     ? 'bg-white border-indigo-400 text-slate-950 placeholder:text-slate-600 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/30'
                     : 'bg-[#070e20] border-indigo-500/60 text-white placeholder:text-slate-400 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/40'
                 }`}
               />
 
-              {/* Right Tools: Clear & 3D Colorful Voice Mic */}
               <div className="absolute right-1.5 flex items-center gap-1">
                 {searchQuery.trim().length > 0 && (
                   <button
@@ -1670,46 +1683,30 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                       setSearchQuery('');
                       setShowSuggestions(false);
                     }}
-                    className="p-1 rounded text-slate-600 dark:text-slate-300 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
-                    title="Clear"
+                    className="p-1 rounded text-slate-400 hover:text-white transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 )}
-
-                {/* 3D Tactile Colorful Voice Mic */}
                 <button
-                  id="btn-voice-listen"
                   onClick={toggleListening}
-                  className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1 text-xs font-black transition-all active:translate-y-0.5 active:shadow-none cursor-pointer ${
+                  className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1 text-xs font-black transition-all cursor-pointer ${
                     isListening
-                      ? 'bg-rose-600 text-white animate-pulse ring-2 ring-rose-400 shadow-[0_2px_0_#9f1239]'
-                      : 'bg-gradient-to-r from-rose-600 via-fuchsia-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-[0_2px_0_#9f1239]'
+                      ? 'bg-rose-600 text-white animate-pulse'
+                      : 'bg-gradient-to-r from-rose-600 via-fuchsia-600 to-amber-600 text-white'
                   }`}
-                  title={'Speak destination'}
                 >
-                  {isListening ? (
-                    <>
-                      <MicOff className="w-3.5 h-3.5 animate-bounce" />
-                      <span className="font-bengali font-black">{'Rec...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-3.5 h-3.5" />
-                      <span className="font-bengali font-black">{'Voice'}</span>
-                    </>
-                  )}
+                  <Mic className="w-3.5 h-3.5" />
+                  <span>Voice</span>
                 </button>
               </div>
             </div>
 
-            {/* Autocomplete suggestions */}
+            {/* Suggestions */}
             {showSuggestions && searchQuery.trim().length > 0 && (
-              <div
-                className={`absolute left-0 right-0 top-full mt-1.5 rounded-xl border-2 shadow-2xl z-50 max-h-56 overflow-y-auto ${
-                  isLight ? 'bg-white border-indigo-300 text-slate-900' : 'bg-[#091124] border-indigo-500/60 text-slate-100 shadow-[0_10px_25px_rgba(0,0,0,0.8)]'
-                }`}
-              >
+              <div className={`absolute left-0 right-0 top-full mt-1.5 rounded-xl border-2 shadow-2xl z-50 max-h-56 overflow-y-auto ${
+                isLight ? 'bg-white border-indigo-300 text-slate-900' : 'bg-[#091124] border-indigo-500/60 text-slate-100'
+              }`}>
                 {filteredPresets.map(preset => (
                   <button
                     key={preset.id}
@@ -1720,16 +1717,14 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                       setShowSuggestions(false);
                       startDriving();
                     }}
-                    className={`w-full text-left px-3.5 py-2.5 text-xs sm:text-sm font-bold flex items-center justify-between border-b last:border-b-0 hover:bg-cyan-500/20 transition-colors cursor-pointer ${
-                      isLight ? 'border-slate-200 text-slate-900' : 'border-indigo-900/50 text-white'
-                    }`}
+                    className="w-full text-left px-3.5 py-2.5 text-xs sm:text-sm font-bold flex items-center justify-between border-b last:border-b-0 hover:bg-cyan-500/20 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
-                      <span className="font-bengali font-bold">{preset.nameEn}</span>
+                      <MapPin className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span>{preset.nameEn}</span>
                     </div>
-                    <span className="text-xs text-cyan-700 dark:text-cyan-300 font-black flex items-center gap-1 font-bengali">
-                      <span>{'Go'}</span>
+                    <span className="text-xs text-cyan-300 font-black flex items-center gap-1">
+                      <span>Go</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </span>
                   </button>
@@ -1738,102 +1733,64 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             )}
           </div>
 
-
-
-          {/* Master 3D Actions: Start/Stop + Voice Prompt + Help */}
+          {/* Drive & Help Actions */}
           <div className="flex items-center gap-2 shrink-0 ml-auto">
-            {/* Tactile Extruded 3D Master Drive Button */}
             {isDriving ? (
               <button
-                id="btn-stop-car"
                 onClick={stopDriving}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black text-white bg-gradient-to-b from-rose-600 to-rose-800 border-t border-rose-300 shadow-[0_3px_0_#881337] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer font-bengali"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black text-white bg-gradient-to-b from-rose-600 to-rose-800 shadow-md cursor-pointer"
               >
                 <Square className="w-4 h-4 fill-white" />
-                <span>{'Halt'}</span>
+                <span>Halt</span>
               </button>
             ) : (
               <button
-                id="btn-start-drive"
                 onClick={startDriving}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black text-white bg-gradient-to-b from-emerald-500 to-emerald-700 border-t border-emerald-300 shadow-[0_3px_0_#064e3b] active:translate-y-[2px] active:shadow-none transition-all cursor-pointer font-bengali"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black text-white bg-gradient-to-b from-emerald-500 to-emerald-700 shadow-md cursor-pointer"
               >
                 <Play className="w-4 h-4 fill-white" />
-                <span>{'Start Drive'}</span>
+                <span>Start Drive</span>
               </button>
             )}
 
-            {/* Speech Audio Toggle */}
-            <button
-              onClick={() => setVoiceFeedback(prev => !prev)}
-              className={`p-2 rounded-xl border-2 text-xs shadow-xs active:translate-y-0.5 active:shadow-none transition-all cursor-pointer ${
-                voiceVoiceFeedback
-                  ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-[0_2px_0_#b45309]'
-                  : isLight
-                    ? 'bg-slate-100 border-slate-300 text-slate-700 hover:text-slate-950'
-                    : 'bg-slate-800 border-slate-700 text-slate-200 hover:text-white'
-              }`}
-              title={voiceVoiceFeedback ? 'Voice Prompts: ON' : 'Voice Prompts: OFF'}
-            >
-              {voiceVoiceFeedback ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
-
-            {/* World-First R&D Breakthroughs Button */}
             <button
               onClick={() => setShowRdModal(true)}
-              className="px-3 py-1.5 rounded-xl border-2 border-purple-400 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-black shadow-[0_2px_0_#581c87] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer flex items-center gap-1.5"
-              title="Next-Gen R&D Features"
+              className="px-3 py-2 rounded-xl border-2 border-purple-400 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-black shadow-md cursor-pointer flex items-center gap-1.5"
             >
               <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-              <span className="hidden sm:inline">World-First R&D</span>
+              <span>R&D</span>
             </button>
 
-            {/* Quick Guide */}
             <button
               onClick={() => setShowHelpModal(true)}
-              className="p-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 hover:bg-cyan-500 text-white text-xs shadow-[0_2px_0_#0e7490] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
-              title="Quick Guide"
+              className="p-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 text-white text-xs shadow-md cursor-pointer"
             >
               <HelpCircle className="w-4 h-4 text-white" />
             </button>
           </div>
         </div>
 
-        {/* Live Status Ribbon with High Contrast */}
-        <div className="mt-2.5 pt-2 border-t border-indigo-500/30 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2.5 overflow-hidden">
-            <span
-              className={`w-3 h-3 rounded-full shrink-0 ${
-                autoStopTriggered
-                  ? 'bg-rose-600 animate-ping'
-                  : isDriving
-                    ? 'bg-emerald-500 animate-pulse'
-                    : 'bg-cyan-500'
-              }`}
-            ></span>
-            <span
-              className={`truncate font-bengali text-xs sm:text-sm font-extrabold ${
-                autoStopTriggered
-                  ? isLight ? 'text-rose-700' : 'text-rose-300'
-                  : isDriving
-                    ? isLight ? 'text-emerald-800' : 'text-emerald-300'
-                    : isLight
-                      ? 'text-slate-900'
-                      : 'text-cyan-200'
+        {/* Preset Chips */}
+        <div className="mt-2.5 pt-2 border-t border-indigo-500/30 flex items-center gap-1.5 overflow-x-auto pb-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 font-mono">Quick Destinations:</span>
+          {PRESET_LOCATIONS.slice(0, 5).map((preset, index) => (
+            <button
+              key={preset.nameEn || index}
+              onClick={() => {
+                setDestination(preset);
+                planRouteTo({ lat: preset.lat, lng: preset.lng });
+                startDriving();
+              }}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-all shrink-0 cursor-pointer ${
+                destination?.nameEn === preset.nameEn
+                  ? 'bg-cyan-600 text-white'
+                  : 'bg-slate-900/80 hover:bg-cyan-950/60 text-slate-200 border border-indigo-900'
               }`}
             >
-              {statusMessage}
-            </span>
-          </div>
-
-          <div className="shrink-0 text-xs font-mono font-bold hidden sm:flex items-center gap-2">
-            <span className={`px-2.5 py-0.5 rounded-full border ${
-              isLight ? 'bg-indigo-100 text-indigo-950 border-indigo-300' : 'bg-indigo-950 text-indigo-200 border-indigo-400'
-            }`}>
-              {isDriving ? (avoidanceDetourActive ? 'DETOUR_ACTIVE' : 'AUTONOMOUS_CRUISE') : 'STANDBY'}
-            </span>
-            <span className={isLight ? 'text-emerald-800 font-black' : 'text-emerald-400 font-black'}>• 60FPS LERP</span>
-          </div>
+              <MapPin className="w-3 h-3 text-cyan-400" />
+              <span>{preset.nameEn}</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1866,376 +1823,118 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
         </div>
       )}
 
-      {/* 2. Integrated 3D Autonomous Cockpit Deck (Left: 3D Telemetry & Actions, Right: 3D Google Map) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-stretch">
-        {/* LEFT COLUMN: Ultra-Compact 3D Telemetry & Tactical Action Console */}
-        <div className="lg:col-span-4 xl:col-span-4 flex flex-col gap-2 order-2 lg:order-1">
-          {/* PANEL 1: Twin 3D Digital Gauges (Speedometer & Gyro Compass) */}
-          <div
-            className={`p-2.5 rounded-2xl border-2 transition-all ${
-              isLight
-                ? 'bg-gradient-to-br from-white via-cyan-50/70 to-indigo-50/70 border-cyan-400/80 text-slate-800 shadow-[0_4px_20px_rgba(6,182,212,0.18)]'
-                : 'bg-gradient-to-br from-[#0a1428] via-[#101b3b] to-[#070f1e] border-cyan-500/40 text-slate-100 shadow-[0_4px_25px_rgba(6,182,212,0.2)]'
-            }`}
-          >
-            <div className="flex items-center justify-between text-[11px] font-bold pb-1.5 mb-2 font-bengali border-b border-cyan-500/30">
-              <span className="flex items-center gap-1.5 text-cyan-400 font-extrabold">
-                <Gauge className="w-3.5 h-3.5 text-cyan-400" />
-                <span>3D Speedometer & Gyro Compass</span>
-              </span>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black border ${
-                speedGovernorState === 'AUTO_STOP'
-                  ? 'bg-rose-500/25 text-rose-300 border-rose-400 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.5)]'
-                  : speedGovernorState === 'DECELERATE_OBSTACLE'
-                    ? 'bg-amber-500/25 text-amber-300 border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
-                    : 'bg-emerald-500/25 text-emerald-300 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
-              }`}>
-                {speedGovernorState === 'AUTO_STOP' ? 'STOP' : speedGovernorState === 'DECELERATE_OBSTACLE' ? 'SLOW' : 'CRUISE'}
-              </span>
-            </div>
-
-            {/* Twin Gauges Grid */}
-            <div className="grid grid-cols-2 gap-2 items-center">
-              {/* Gauge A: 3D Radial Speedometer SVG with Neon Glow */}
-              <div className="relative flex flex-col items-center justify-center p-1.5 rounded-xl bg-[#050c1b] border-2 border-cyan-500/40 shadow-[inset_0_2px_8px_rgba(6,182,212,0.3)]">
-                <svg className="w-24 h-24 -rotate-90 transform" viewBox="0 0 100 100">
-                  {/* Outer Bezel Track */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="none"
-                    stroke={isLight ? '#c7d2fe' : '#1e293b'}
-                    strokeWidth="7"
-                    strokeDasharray="188"
-                    strokeDashoffset="47"
-                    strokeLinecap="round"
-                  />
-                  {/* Dynamic Glowing Colorful Speed Arc */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="none"
-                    stroke={
-                      speedGovernorState === 'AUTO_STOP'
-                        ? '#f43f5e'
-                        : speedGovernorState === 'DECELERATE_OBSTACLE'
-                          ? '#f59e0b'
-                          : '#06b6d4'
-                    }
-                    strokeWidth="7"
-                    strokeDasharray="188"
-                    strokeDashoffset={188 - (Math.min(100, (speedKmh / (baseCruiseSpeed || 25)) * 100) / 100) * 141}
-                    strokeLinecap="round"
-                    className="transition-all duration-200"
-                    filter="drop-shadow(0 0 4px currentColor)"
-                  />
-                </svg>
-
-                {/* Center Digital Speed Readout */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-xl font-black font-mono tracking-tight text-cyan-300 leading-none drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]">
-                    {speedKmh.toFixed(1)}
-                  </span>
-                  <span className="text-[9px] font-mono text-cyan-400/90 font-black uppercase mt-0.5">
-                    km/h
-                  </span>
-                  <span className="text-[9px] text-emerald-400 font-mono font-bold mt-0.5">
-                    {throttlePercent}% Pwr
-                  </span>
-                </div>
-              </div>
-
-              {/* Gauge B: 3D Rotating Gyro Compass Dial with High Contrast */}
-              <div className="relative flex flex-col items-center justify-center p-1.5 rounded-xl bg-[#050c1b] border-2 border-indigo-500/40 shadow-[inset_0_2px_8px_rgba(99,102,241,0.3)]">
-                <div
-                  className="w-24 h-24 rounded-full border border-indigo-500/50 bg-gradient-to-b from-[#0e1738] to-[#040817] relative flex items-center justify-center transition-transform duration-150 ease-out shadow-inner"
-                  style={{ transform: `rotate(${-carHeading}deg)` }}
-                >
-                  {/* Cardinal Points in Vibrant Colors */}
-                  <span className="absolute top-1 text-[10px] font-black text-rose-500 font-mono drop-shadow-[0_0_4px_rgba(244,63,94,0.8)]">N</span>
-                  <span className="absolute bottom-1 text-[9px] font-bold text-cyan-400 font-mono">S</span>
-                  <span className="absolute right-1.5 text-[9px] font-bold text-cyan-400 font-mono">E</span>
-                  <span className="absolute left-1.5 text-[9px] font-bold text-cyan-400 font-mono">W</span>
-                  {/* Crosshairs */}
-                  <div className="w-full h-px bg-indigo-500/30 absolute"></div>
-                  <div className="h-full w-px bg-indigo-500/30 absolute"></div>
-                </div>
-
-                {/* Center Direction Arrow */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <Navigation className="w-5 h-5 text-emerald-400 fill-emerald-400 filter drop-shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
-                  <span className="text-[9px] font-mono font-black text-amber-300 mt-1 bg-black/80 px-1.5 py-0.2 rounded-full border border-amber-400/50">
-                    {Math.round(carHeading)}°
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Target Destination & ETA Bar with Rich Gradients */}
-            <div className="mt-2 pt-2 border-t border-cyan-500/30 flex items-center justify-between text-[11px] font-bengali">
-              <div className="flex items-center gap-1.5 truncate max-w-[150px]">
-                <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 animate-bounce" />
-                <span className="truncate font-black text-cyan-200">{destination.nameEn}</span>
-              </div>
-              <div className="flex items-center gap-2 font-mono text-emerald-400 font-black">
-                <span>{distanceRemainingMeters > 1000 ? `${(distanceRemainingMeters / 1000).toFixed(2)}km` : `${Math.round(distanceRemainingMeters)}m`}</span>
-                <span className="text-cyan-300/80 font-normal">| {etaMinutes}m {etaSeconds}s</span>
-              </div>
-            </div>
-            {/* Multi-Color Trip Progress Bar */}
-            <div className="w-full bg-[#050c1b] rounded-full h-2 mt-1.5 overflow-hidden p-0.5 border border-indigo-500/30">
-              <div
-                className="bg-gradient-to-r from-cyan-400 via-emerald-400 to-fuchsia-500 h-full rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(6,182,212,0.8)]"
-                style={{ width: `${tripProgress}%` }}
-              ></div>
-            </div>
+      {/* 2-Column Layout: Left = Authentic Car Speedometer, Right = Compact Google Map */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+        {/* LEFT: Authentic Car Speedometer & Dashboard Gauge */}
+        <div className="lg:col-span-4 flex flex-col p-4 rounded-2xl bg-gradient-to-br from-[#080e1f] via-[#0d1633] to-[#050914] border-2 border-cyan-500/40 shadow-[0_0_30px_rgba(6,182,212,0.15)] text-slate-100 justify-between">
+          <div className="flex items-center justify-between border-b border-cyan-500/30 pb-2 mb-3">
+            <span className="flex items-center gap-2 text-cyan-400 font-extrabold text-xs tracking-wider uppercase">
+              <Gauge className="w-4 h-4 text-cyan-400 animate-pulse" />
+              <span>Car Speedometer</span>
+            </span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black border ${
+              speedGovernorState === 'AUTO_STOP'
+                ? 'bg-rose-500/25 text-rose-300 border-rose-400 animate-pulse'
+                : 'bg-emerald-500/25 text-emerald-300 border-emerald-400'
+            }`}>
+              {speedGovernorState === 'AUTO_STOP' ? 'STOPPED' : isDriving ? 'CRUISE ON' : 'STANDBY'}
+            </span>
           </div>
 
-          {/* PANEL 2: Differential Motors & Steering Telemetry (Colorful Teal & Purple) */}
-          <div
-            className={`p-2.5 rounded-2xl border-2 transition-all ${
-              isLight
-                ? 'bg-gradient-to-br from-white via-teal-50/70 to-emerald-50/70 border-teal-400/80 text-slate-800 shadow-[0_4px_20px_rgba(20,184,166,0.18)]'
-                : 'bg-gradient-to-br from-[#061824] via-[#092233] to-[#04121c] border-teal-500/40 text-slate-100 shadow-[0_4px_25px_rgba(20,184,166,0.2)]'
-            }`}
-          >
-            <div className="flex items-center justify-between text-[11px] font-bold mb-2 font-bengali text-teal-300">
-              <span className="font-extrabold text-teal-300">Motor Drive & Differential Steering</span>
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-black font-bengali border ${
-                  steeringMode === 'LEFT' || steeringMode === 'RIGHT'
-                    ? 'bg-amber-500/25 text-amber-300 border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
-                    : steeringMode === 'STOP'
-                      ? 'bg-rose-500/25 text-rose-300 border-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.5)]'
-                      : 'bg-emerald-500/25 text-emerald-300 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
-                }`}
-              >
-                {steeringMode === 'LEFT' ? '⬅ Left Turn' : steeringMode === 'RIGHT' ? '➡ Right Turn' : steeringMode === 'STOP' ? '🛑 Brake' : '⬆ Forward'}
-              </span>
-            </div>
+          {/* Authentic Analog Car Speedometer Gauge with Needle */}
+          <div className="relative flex flex-col items-center justify-center my-1">
+            <div className="relative w-44 h-44 rounded-full border-4 border-cyan-500/40 bg-radial from-[#040814] via-[#080e22] to-[#020409] flex items-center justify-center shadow-[inset_0_0_25px_rgba(6,182,212,0.4),0_0_20px_rgba(6,182,212,0.2)]">
+              {/* SVG Analog Dial Face */}
+              <svg className="absolute inset-0 w-full h-full p-2" viewBox="0 0 120 120">
+                {/* Outer Bezel Ring */}
+                <circle cx="60" cy="60" r="54" fill="none" stroke="#1e293b" strokeWidth="2" />
+                <circle cx="60" cy="60" r="50" fill="none" stroke="#0f172a" strokeWidth="4" />
 
-            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-              {/* Left Motor Card - Neon Cyan */}
-              <div className="p-2 rounded-xl bg-[#041420] border border-cyan-500/40 shadow-inner">
-                <div className="flex justify-between font-bengali">
-                  <span className="text-cyan-300 font-bold">Left Motor (L):</span>
-                  <span className="font-black text-cyan-300 font-mono drop-shadow-[0_0_6px_rgba(6,182,212,0.8)]">{motorPwmLeft} PWM</span>
-                </div>
-                <div className="w-full bg-[#020b12] rounded-full h-2 mt-1.5 overflow-hidden p-0.5 border border-cyan-500/30">
-                  <div
-                    className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all shadow-[0_0_8px_rgba(6,182,212,0.9)]"
-                    style={{ width: `${(motorPwmLeft / 255) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
+                {/* Tick Marks & Numbers (0 to 120 km/h) */}
+                {[0, 20, 40, 60, 80, 100, 120].map((val) => {
+                  const ratio = val / 120;
+                  const angleDeg = -135 + ratio * 270;
+                  const angleRad = (angleDeg - 90) * (Math.PI / 180);
+                  const x1 = 60 + 40 * Math.cos(angleRad);
+                  const y1 = 60 + 40 * Math.sin(angleRad);
+                  const x2 = 60 + 46 * Math.cos(angleRad);
+                  const y2 = 60 + 46 * Math.sin(angleRad);
+                  const textX = 60 + 31 * Math.cos(angleRad);
+                  const textY = 60 + 31 * Math.sin(angleRad);
+                  return (
+                    <g key={val}>
+                      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" />
+                      <text
+                        x={textX}
+                        y={textY}
+                        fill="#94a3b8"
+                        fontSize="7"
+                        fontFamily="monospace"
+                        fontWeight="bold"
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                      >
+                        {val}
+                      </text>
+                    </g>
+                  );
+                })}
 
-              {/* Right Motor Card - Neon Purple */}
-              <div className="p-2 rounded-xl bg-[#140a24] border border-purple-500/40 shadow-inner">
-                <div className="flex justify-between font-bengali">
-                  <span className="text-purple-300 font-bold">Right Motor (R):</span>
-                  <span className="font-black text-purple-300 font-mono drop-shadow-[0_0_6px_rgba(168,85,247,0.8)]">{motorPwmRight} PWM</span>
-                </div>
-                <div className="w-full bg-[#0d041a] rounded-full h-2 mt-1.5 overflow-hidden p-0.5 border border-purple-500/30">
-                  <div
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 h-full rounded-full transition-all shadow-[0_0_8px_rgba(168,85,247,0.9)]"
-                    style={{ width: `${(motorPwmRight / 255) * 100}%` }}
-                  ></div>
-                </div>
+                {/* Minor Ticks */}
+                {Array.from({ length: 25 }).map((_, i) => {
+                  const ratio = i / 24;
+                  const angleDeg = -135 + ratio * 270;
+                  const angleRad = (angleDeg - 90) * (Math.PI / 180);
+                  const x1 = 60 + 43 * Math.cos(angleRad);
+                  const y1 = 60 + 43 * Math.sin(angleRad);
+                  const x2 = 60 + 46 * Math.cos(angleRad);
+                  const y2 = 60 + 46 * Math.sin(angleRad);
+                  return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#475569" strokeWidth="0.8" />;
+                })}
+
+                {/* Rotating Analog Needle */}
+                {(() => {
+                  const maxSpeed = 120;
+                  const ratio = Math.min(1, Math.max(0, speedKmh / maxSpeed));
+                  const needleDeg = -135 + ratio * 270;
+                  return (
+                    <g transform={`rotate(${needleDeg} 60 60)`} className="transition-transform duration-150 ease-out">
+                      {/* Needle Shadow / Glow */}
+                      <line x1="60" y1="60" x2="60" y2="20" stroke="#f43f5e" strokeWidth="2.5" strokeLinecap="round" filter="drop-shadow(0 0 6px #f43f5e)" />
+                      <circle cx="60" cy="60" r="5" fill="#0f172a" stroke="#f43f5e" strokeWidth="2" />
+                    </g>
+                  );
+                })()}
+              </svg>
+
+              {/* Center Digital Speed & Units Readout inside Dial */}
+              <div className="flex flex-col items-center justify-center z-10 mt-6 pointer-events-none">
+                <span className="text-2xl font-black font-mono tracking-tighter text-white drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]">
+                  {speedKmh.toFixed(0)}
+                </span>
+                <span className="text-[9px] font-mono font-bold text-cyan-400 uppercase tracking-widest mt-[-2px]">
+                  KM/H ANALOG
+                </span>
               </div>
             </div>
           </div>
 
-          {/* PANEL 3: 3D LiDAR Radar & Safety Scan (Vibrant Emerald & Gold) */}
-          <div
-            className={`p-2.5 rounded-2xl border-2 transition-all ${
-              isLight
-                ? 'bg-gradient-to-br from-white via-emerald-50/70 to-teal-50/70 border-emerald-400/80 text-slate-800 shadow-[0_4px_20px_rgba(16,185,129,0.18)]'
-                : 'bg-gradient-to-br from-[#061c14] via-[#092b1f] to-[#04140e] border-emerald-500/40 text-slate-100 shadow-[0_4px_25px_rgba(16,185,129,0.2)]'
-            }`}
-          >
-            <div className="flex items-center justify-between text-[11px] font-bold mb-2 font-bengali">
-              <span className="flex items-center gap-1.5 text-emerald-300 font-extrabold">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>360° LiDAR & Obstacle Scanner</span>
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-black font-bengali border ${
-                  nearestDistMeters === null
-                    ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
-                    : nearestDistMeters < 6
-                      ? 'bg-rose-500/25 text-rose-300 border-rose-400 animate-pulse shadow-[0_0_10px_rgba(244,63,94,0.6)]'
-                      : 'bg-amber-500/25 text-amber-300 border-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.5)]'
-                }`}
-              >
-                {nearestDistMeters === null ? 'Clear' : nearestDistMeters < 6 ? 'Hazard!' : 'Caution'}
-              </span>
+          {/* Car Telemetry Stats Bar */}
+          <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-cyan-500/20 text-[11px] font-mono">
+            <div className="bg-[#040814] p-2 rounded-xl border border-cyan-500/20 flex flex-col">
+              <span className="text-[9px] text-cyan-400/80">Heading</span>
+              <span className="text-white font-bold">{Math.round(carHeading)}°</span>
             </div>
-
-            <div className="flex items-center justify-between p-2 rounded-xl bg-[#04130d] border border-emerald-500/40 shadow-inner">
-              <div>
-                <span className="text-[10px] text-emerald-300/80 font-bengali">Nearest Dist:</span>
-                <div className="flex items-baseline gap-1.5">
-                  <span
-                    className={`text-lg font-black font-mono drop-shadow-md ${
-                      nearestDistMeters === null
-                        ? 'text-emerald-400'
-                        : nearestDistMeters < 6
-                          ? 'text-rose-400 animate-pulse'
-                          : 'text-amber-400'
-                    }`}
-                  >
-                    {nearestDistMeters !== null ? `${nearestDistMeters}m` : '25m+'}
-                  </span>
-                  <span className="text-[10px] text-emerald-300 font-bengali font-bold">
-                    ({nearestObstacle ? nearestObstacle.labelEn : 'Clear'})
-                  </span>
-                </div>
-              </div>
-
-              <div className="text-right">
-                <span className="text-[10px] text-emerald-300/80 font-bengali">Path Status:</span>
-                <div className="text-[11px] font-black font-bengali text-emerald-300">
-                  {avoidanceDetourActive ? 'Detour Active' : 'Cruise Route'}
-                </div>
-              </div>
+            <div className="bg-[#040814] p-2 rounded-xl border border-cyan-500/20 flex flex-col">
+              <span className="text-[9px] text-emerald-400/80">Odometer</span>
+              <span className="text-emerald-300 font-bold">{(travelledMetersRef.current / 1000).toFixed(2)} km</span>
             </div>
           </div>
-
-          {/* PANEL 4: Autonomous Background AI Perception & Safety Status */}
-          <div
-            className={`p-2.5 rounded-2xl border-2 transition-all ${
-              isLight
-                ? 'bg-gradient-to-br from-white via-purple-50/70 to-pink-50/70 border-purple-400/80 text-slate-800 shadow-[0_4px_20px_rgba(168,85,247,0.18)]'
-                : 'bg-gradient-to-br from-[#160c28] via-[#241242] to-[#0f071c] border-purple-500/40 text-slate-100 shadow-[0_4px_25px_rgba(168,85,247,0.2)]'
-            }`}
-          >
-            <div className="text-[11px] font-bold text-purple-300 mb-1.5 font-bengali flex items-center justify-between">
-              <span className="font-extrabold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                Background AI Perception Active
-              </span>
-              <span className="font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/25 border border-emerald-400/50 text-emerald-300 text-[10px]">
-                Always On
-              </span>
-            </div>
-
-            <div className="text-[10px] text-purple-200/90 leading-relaxed font-bengali mb-2">
-              Autonomous hazard detection, traffic jam bypass, and water body lake avoidance are running continuously in the background to ensure safe routing.
-            </div>
-
-            {/* Quick Map Pin & Clear controls */}
-            <div className="grid grid-cols-2 gap-2 font-bengali">
-              <button
-                onClick={() => setPlacementMode(prev => !prev)}
-                className={`px-2.5 py-2 rounded-xl text-xs font-black border-t transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  placementMode
-                    ? 'bg-rose-600 text-white border-rose-300 shadow-inner animate-pulse'
-                    : 'bg-gradient-to-b from-purple-500 via-violet-600 to-indigo-700 text-white border-purple-200 shadow-[0_3px_0_#4338ca,0_0_15px_rgba(147,51,234,0.5)] hover:shadow-[0_1px_0_#4338ca] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none'
-                }`}
-              >
-                <Plus className="w-4 h-4" />
-                <span>{placementMode ? 'Click Map...' : 'Place Pin'}</span>
-              </button>
-
-              <button
-                onClick={handleClearAllObstacles}
-                className="px-2.5 py-2 rounded-xl text-xs font-black bg-gradient-to-b from-cyan-500 via-sky-600 to-blue-700 text-white border-t border-cyan-200 shadow-[0_3px_0_#1d4ed8,0_0_15px_rgba(6,182,212,0.5)] hover:shadow-[0_1px_0_#1d4ed8] hover:translate-y-[2px] active:translate-y-[3px] active:shadow-none transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                title="Clear obstacles"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Clear</span>
-              </button>
-            </div>
-
-            {/* Cruise Speed Slider & Hardware Sync */}
-            <div className="mt-2.5 pt-2 border-t border-purple-500/30 flex items-center justify-between gap-2 text-[11px]">
-              <div className="flex items-center gap-1.5 font-bengali">
-                <span className="text-purple-300 font-bold">Speed:</span>
-                <input
-                  type="range"
-                  min="12"
-                  max="32"
-                  step="1"
-                  value={baseCruiseSpeed}
-                  onChange={e => setBaseCruiseSpeed(Number(e.target.value))}
-                  className="w-20 accent-cyan-400 cursor-pointer"
-                />
-                <span className="font-mono font-black text-cyan-300">{baseCruiseSpeed}km/h</span>
-              </div>
-
-              <button
-                onClick={handleConnectSerial}
-                className={`px-2.5 py-1 rounded-xl text-[10px] font-black font-bengali flex items-center gap-1 transition-all cursor-pointer border ${
-                  serialConnected
-                    ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.7)]'
-                    : 'bg-gradient-to-b from-teal-500 to-emerald-700 text-white border-teal-300 shadow-[0_2px_0_#065f46,0_0_10px_rgba(20,184,166,0.4)]'
-                }`}
-              >
-                <Cpu className="w-3.5 h-3.5" />
-                <span>{serialConnected ? 'HW Linked' : 'USB HW'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* PANEL 5: 360° Perimeter Defense & Self-Righting Roll-Over Recovery Module */}
-          <UGVDefensiveSafetyModule
-            theme={theme}
-            isPerimeterArmed={isPerimeterArmed}
-            onTogglePerimeterArm={() => {
-              setIsPerimeterArmed(prev => {
-                const next = !prev;
-                if (!next && isBreached) {
-                  handleClearBreach();
-                }
-                return next;
-              });
-            }}
-            isBreached={isBreached}
-            breachDistanceMeters={breachDistanceMeters}
-            onSimulateIntruderBreach={handleSimulateIntruderBreach}
-            onClearBreach={handleClearBreach}
-            isEngineLocked={isEngineLocked}
-            isSirenAudible={isSirenAudible}
-            onToggleSirenAudible={() => {
-              setIsSirenAudible(prev => {
-                const next = !prev;
-                if (!next) {
-                  ugvDefensiveAudio.stopDefenseSiren();
-                } else if (isBreached) {
-                  ugvDefensiveAudio.startDefenseSiren();
-                }
-                return next;
-              });
-            }}
-            rollAngleDeg={rollAngleDeg}
-            pitchAngleDeg={pitchAngleDeg}
-            isTumbled={isTumbled}
-            isSelfRightingActive={isSelfRightingActive}
-            selfRightingPhase={selfRightingPhase}
-            onSimulateRollover={handleSimulateRollover}
-            onExecuteSelfRighting={handleExecuteSelfRighting}
-            autoSelfRightEnabled={autoSelfRightEnabled}
-            onToggleAutoSelfRight={() => setAutoSelfRightEnabled(prev => !prev)}
-          />
-
-          {/* PANEL 6: Satellite-Denied Navigation (Wheel Encoders, Optical Flow, Celestial Star Tracker) */}
-          <CelestialOdometryPanel
-            theme={theme}
-            isGpsDenied={isGpsDenied}
-            onToggleGpsDenied={handleToggleGpsDenied}
-            odometry={odometryMetrics}
-            carHeading={carHeading}
-            stars={celestialStars}
-            isTunnelActive={isTunnelActive}
-            onSimulateTunnelMode={handleSimulateTunnelMode}
-          />
         </div>
 
-        {/* RIGHT COLUMN: Interactive Google Map Window with Vibrant Neon Cockpit HUD Controls */}
-        <div className="lg:col-span-8 xl:col-span-8 flex flex-col order-1 lg:order-2">
-          <div className="relative w-full rounded-2xl overflow-hidden border-2 border-indigo-500/50 shadow-[0_0_40px_rgba(99,102,241,0.25)] h-[520px] sm:h-[580px] lg:h-[calc(100vh-130px)] lg:min-h-[560px] bg-[#070f22] flex-1">
+        {/* RIGHT: Compact Google Map Window */}
+        <div className="lg:col-span-8 flex flex-col">
+          <div className="relative w-full rounded-2xl overflow-hidden border-2 border-indigo-500/50 shadow-[0_0_40px_rgba(99,102,241,0.25)] h-[280px] sm:h-[340px] lg:h-[380px] bg-[#070f22]">
         <APIProvider apiKey={apiKey} libraries={['marker', 'geometry', 'places']}>
           <Map
             id="ugv-autonomous-map"
@@ -2969,9 +2668,9 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
             </div>
           </div>
         )}
-          </div>
         </div>
       </div>
+    </div>
 
       {/* 5. Quick Help & User Guide Modal (Quick Guide) */}
       {showHelpModal && (
@@ -3180,6 +2879,6 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
