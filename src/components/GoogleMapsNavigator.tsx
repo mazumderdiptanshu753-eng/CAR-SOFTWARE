@@ -513,6 +513,13 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
     }
   }, [autoStopTriggered, onAutoStopStateChange]);
 
+  // Listen for special features event from Navbar
+  useEffect(() => {
+    const handleOpenSpecial = () => setShowRdModal(true);
+    window.addEventListener('open-special-features', handleOpenSpecial);
+    return () => window.removeEventListener('open-special-features', handleOpenSpecial);
+  }, []);
+
   // Helper: Automatically seed road obstacles (1 or 2 obstacles) along the active road direction when driving starts
   const seedRouteObstacles = useCallback((coords: GeoCoordinate[]): MapObstacle[] => {
     if (coords.length < 6) return [];
@@ -2826,7 +2833,7 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                 <div>
                   <h4 className="font-bold text-white text-sm">Quantum Neural Obstacle Prediction Engine (Q-NPE)</h4>
                   <p className="text-xs text-slate-300 mt-1">
-                    Unlike standard vehicles that react to obstacles on impact or proximity, Q-NPE uses predictive spatio-temporal neural tensors to calculate the exact future trajectory of stray animals and pedestrians 3.5 seconds before they cross the path.
+                    Unlike standard vehicles that react to obstacles upon impact or proximity, Q-NPE uses predictive spatio-temporal neural tensors to calculate the exact future trajectory of stray animals and pedestrians 3.5 seconds before they cross the path.
                   </p>
                 </div>
               </div>
@@ -2863,6 +2870,18 @@ export const GoogleMapsNavigator: React.FC<GoogleMapsNavigatorProps> = ({
                   <h4 className="font-bold text-white text-sm">Swarm Mesh Telepathic Fleet Sync (SM-TFS)</h4>
                   <p className="text-xs text-slate-300 mt-1">
                     Ad-hoc peer-to-peer UGV mesh networking that instantly shares real-time road obstacles, traffic jams, and hazard telemetry across all nearby autonomous units with zero cellular or cloud latency.
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-950/60 to-pink-950/60 border border-rose-500/30 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-rose-600/30 text-rose-300 font-bold flex items-center justify-center shrink-0 border border-rose-400/30">
+                  5
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">Autonomous Edge-Neural Self-Healing Memory Core (ENS-HMC)</h4>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Powered by an offline, non-cloud intelligent car brain. If the UGV encounters an unexpected anomaly or makes a sub-optimal driving maneuver, ENS-HMC instantly computes a corrective protocol and permanently patches its local neural weights to prevent identical errors from ever recurring.
                   </p>
                 </div>
               </div>

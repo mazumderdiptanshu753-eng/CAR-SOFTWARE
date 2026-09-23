@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Power, AlertTriangle, Activity } from 'lucide-react';
+import { Power, AlertTriangle, Activity, Sparkles } from 'lucide-react';
 import { Theme } from '../types';
 
 interface NavbarProps {
@@ -14,10 +14,12 @@ interface NavbarProps {
   onReset: () => void;
   isRunning: boolean;
   autoStopTriggered?: boolean;
+  onOpenRdModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   theme,
+  onOpenRdModal,
 }) => {
   const [isPoweredOn, setIsPoweredOn] = useState<boolean>(true);
   const [emergencyActive, setEmergencyActive] = useState<boolean>(false);
@@ -40,8 +42,21 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </div>
 
-        {/* Right: Emergency Alert & Diagnostics */}
-        <div className="flex items-center gap-2">
+        {/* Right: Special Features Button, Emergency Alert & Diagnostics */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Special Features Button */}
+          <button
+            onClick={() => {
+              if (onOpenRdModal) onOpenRdModal();
+              else window.dispatchEvent(new CustomEvent('open-special-features'));
+            }}
+            className="px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all cursor-pointer border bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 text-white border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.6)] hover:scale-105"
+            title="View All World-First Special UGV Features"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+            <span>✨ Special Features</span>
+          </button>
+
           {/* Emergency Alert Button */}
           <button
             onClick={() => setEmergencyActive(prev => !prev)}

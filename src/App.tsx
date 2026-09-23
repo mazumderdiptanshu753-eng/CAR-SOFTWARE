@@ -2,8 +2,9 @@ import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'rea
 import { Navbar } from './components/Navbar';
 import { GoogleMapsNavigator } from './components/GoogleMapsNavigator';
 import { WelcomeScreen } from './components/WelcomeScreen';
+import { SpecialFeaturesTestModal } from './components/SpecialFeaturesTestModal';
 import { Language, Theme } from './types';
-import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Sparkles, X, Play } from 'lucide-react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -67,12 +68,19 @@ export default function App() {
   const [gmpQuotaReached, setGmpQuotaReached] = useState<boolean>(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(true);
   const [isCarDisplayMode, setIsCarDisplayMode] = useState<boolean>(true);
+  const [showRdModal, setShowRdModal] = useState<boolean>(false);
+  const [showTestBenchModal, setShowTestBenchModal] = useState<boolean>(false);
 
-  // Listen to Google Maps Demo Key quota notification
+  // Listen to Google Maps Demo Key quota notification and open-special-features event
   useEffect(() => {
     const handleQuota = () => setGmpQuotaReached(true);
+    const handleOpenSpecial = () => setShowRdModal(true);
     window.addEventListener('gmp-quota-exceeded', handleQuota);
-    return () => window.removeEventListener('gmp-quota-exceeded', handleQuota);
+    window.addEventListener('open-special-features', handleOpenSpecial);
+    return () => {
+      window.removeEventListener('gmp-quota-exceeded', handleQuota);
+      window.removeEventListener('open-special-features', handleOpenSpecial);
+    };
   }, []);
 
   const handleTogglePlay = () => {
@@ -178,6 +186,7 @@ export default function App() {
             onReset={handleReset}
             isRunning={isRunning}
             autoStopTriggered={autoStopActive}
+            onOpenRdModal={() => setShowRdModal(true)}
           />
 
           {/* Main GPS Autonomous Navigation Suite */}
@@ -189,6 +198,125 @@ export default function App() {
             />
           </main>
         </div>
+
+        {/* World-First Non-Humanoid UGV R&D Breakthrough Features Modal (Root Level z-[9999]) */}
+        {showRdModal && (
+          <div className="fixed inset-0 z-[9999] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="max-w-2xl w-full bg-[#080f25] border-2 border-purple-500/60 rounded-3xl shadow-[0_0_60px_rgba(168,85,247,0.4)] overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-purple-950 via-[#131b3b] to-indigo-950 border-b border-purple-500/30">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center border border-purple-400/40 shadow-inner">
+                    <Sparkles className="w-5 h-5 animate-pulse text-amber-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-black text-white tracking-wide">
+                      {'World-First Non-Humanoid UGV R&D Innovations'}
+                    </h3>
+                    <p className="text-xs text-purple-300 font-mono">
+                      {'Breakthrough features never before seen in commercial autonomous vehicles'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowRdModal(false)}
+                  className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <X className="w-4.5 h-4.5" />
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto flex-1 flex flex-col gap-4 text-slate-200">
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-950/60 to-indigo-950/60 border border-purple-500/30 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600/30 text-purple-300 font-bold flex items-center justify-center shrink-0 border border-purple-400/30">
+                    1
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">Quantum Neural Obstacle Prediction Engine (Q-NPE)</h4>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Unlike standard vehicles that react to obstacles upon impact or proximity, Q-NPE uses predictive spatio-temporal neural tensors to calculate the exact future trajectory of stray animals and pedestrians 3.5 seconds before they cross the path.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-cyan-950/60 to-blue-950/60 border border-cyan-500/30 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-600/30 text-cyan-300 font-bold flex items-center justify-center shrink-0 border border-cyan-400/30">
+                    2
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">Sub-Surface Thermal Sinkhole & Cavity Radar (SST-SCR)</h4>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Equipped with real-time ground-penetrating thermal radar that scans underground pipe bursts, hollow soil pockets, and sinkholes beneath the asphalt before the vehicle's wheels roll over them, executing instant dynamic routing.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/60 to-teal-950/60 border border-emerald-500/30 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600/30 text-emerald-300 font-bold flex items-center justify-center shrink-0 border border-emerald-400/30">
+                    3
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">Bio-Acoustic Siren Directional Array (BAS-DA)</h4>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Ultra-sensitive directional acoustic microphone array that hears incoming emergency vehicle sirens (ambulances, fire engines) from 500 meters away through surrounding buildings and automatically pulls over to yield.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-950/60 to-orange-950/60 border border-amber-500/30 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-amber-600/30 text-amber-300 font-bold flex items-center justify-center shrink-0 border border-amber-400/30">
+                    4
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">Swarm Mesh Telepathic Fleet Sync (SM-TFS)</h4>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Ad-hoc peer-to-peer UGV mesh networking that instantly shares real-time road obstacles, traffic jams, and hazard telemetry across all nearby autonomous units with zero cellular or cloud latency.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-950/60 to-pink-950/60 border border-rose-500/30 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-rose-600/30 text-rose-300 font-bold flex items-center justify-center shrink-0 border border-rose-400/30">
+                    5
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">Autonomous Edge-Neural Self-Healing Memory Core (ENS-HMC)</h4>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Powered by an offline, non-cloud intelligent car brain. If the UGV encounters an unexpected anomaly or makes a sub-optimal driving maneuver, ENS-HMC instantly computes a corrective protocol and permanently patches its local neural weights to prevent identical errors from ever recurring.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-5 py-3.5 bg-[#050a18] border-t border-purple-500/30 flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    setShowRdModal(false);
+                    setShowTestBenchModal(true);
+                  }}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-slate-950 font-black text-xs shadow-lg flex items-center gap-2 cursor-pointer transition-all"
+                >
+                  <Play className="w-4 h-4 fill-slate-950" />
+                  <span>🚀 Launch Live Test Bench</span>
+                </button>
+
+                <button
+                  onClick={() => setShowRdModal(false)}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                >
+                  {'Close R&D Console'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Interactive Special Features Live Test Bench Modal */}
+        {showTestBenchModal && (
+          <SpecialFeaturesTestModal
+            theme={theme}
+            onClose={() => setShowTestBenchModal(false)}
+          />
+        )}
       </div>
     </ErrorBoundary>
   );
